@@ -1,0 +1,146 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isVerifiedOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+
+    function optionalText(data, field, maximum) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maximum);
+    }
+
+    function validProject(data) {
+      return data.keys().hasOnly([
+          'name', 'status', 'description', 'patternUrl', 'materialsRequired', 'latestUpdate',
+          'hookSize', 'yarn', 'amountUsed', 'coverPhotoId', 'completedAt',
+          'sourceCompletedProjectId', 'createdAt', 'updatedAt', 'schemaVersion'
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 200
+        && data.status in ['planned', 'active', 'completed']
+        && optionalText(data, 'description', 10000)
+        && optionalText(data, 'patternUrl', 2048)
+        && optionalText(data, 'materialsRequired', 10000)
+        && optionalText(data, 'latestUpdate', 10000)
+        && optionalText(data, 'hookSize', 100)
+        && optionalText(data, 'coverPhotoId', 200)
+        && optionalText(data, 'sourceCompletedProjectId', 200)
+        && (!('yarn' in data) || data.yarn is map)
+        && (!('amountUsed' in data) || data.amountUsed is map)
+        && (!('completedAt' in data) || data.completedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.schemaVersion == 1;
+    }
+
+    match /users/{userId}/projects/{projectId} {
+      allow read: if isVerifiedOwner(userId);
+      allow create, update: if isVerifiedOwner(userId) && validProject(request.resource.data);
+      allow delete: if isVerifiedOwner(userId);
+
+      match /sections/{sectionId} {
+        allow read, delete: if isVerifiedOwner(userId);
+        allow create, update: if isVerifiedOwner(userId)
+          && request.resource.data.keys().hasOnly(['name', 'parentSectionId', 'createdAt', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && request.resource.data.parentSectionId == null
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+
+        match /counters/{counterId} {
+          allow read, delete: if isVerifiedOwner(userId);
+          allow create, update: if isVerifiedOwner(userId)
+            && request.resource.data.keys().hasOnly(['name', 'current', 'target', 'completed', 'stitchType', 'customStitchName', 'customStitchInstructions', 'stitchesPerRow', 'createdAt', 'updatedAt'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0
+            && request.resource.data.name.size() <= 200
+            && request.resource.data.current is int
+            && request.resource.data.current >= 0
+            && (request.resource.data.target == null || (request.resource.data.target is int && request.resource.data.target >= 0))
+            && (request.resource.data.target == null || request.resource.data.current <= request.resource.data.target)
+            && (!request.resource.data.keys().hasAny(['completed']) || request.resource.data.completed is bool)
+            && (!request.resource.data.keys().hasAny(['completed']) || request.resource.data.completed == false || request.resource.data.target == null)
+            && (!('stitchType' in request.resource.data) || request.resource.data.stitchType in ['sc', 'dc', 'hdc', 'tc', 'sk', 'sl st', 'custom'])
+            && (!('stitchesPerRow' in request.resource.data) || request.resource.data.stitchesPerRow == null || (request.resource.data.stitchesPerRow is int && request.resource.data.stitchesPerRow > 0))
+            && optionalText(request.resource.data, 'customStitchName', 200)
+            && optionalText(request.resource.data, 'customStitchInstructions', 5000)
+            && (!('stitchType' in request.resource.data) || request.resource.data.stitchType != 'custom' || (request.resource.data.customStitchName is string && request.resource.data.customStitchName.size() > 0 && request.resource.data.customStitchInstructions is string && request.resource.data.customStitchInstructions.size() > 0))
+            && request.resource.data.createdAt is timestamp
+            && request.resource.data.updatedAt is timestamp;
+        }
+      }
+
+      match /photos/{photoId} {
+        allow read, delete: if isVerifiedOwner(userId);
+        allow create, update: if isVerifiedOwner(userId)
+          && get(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)).data.status == 'completed'
+          && request.resource.data.keys().hasOnly(['cloudinaryPublicId', 'secureUrl', 'assetVersion', 'format', 'contentType', 'byteSize', 'width', 'height', 'createdAt'])
+          && request.resource.data.cloudinaryPublicId is string
+          && request.resource.data.cloudinaryPublicId.size() > 0
+          && request.resource.data.secureUrl is string
+          && request.resource.data.secureUrl.matches('https://.*')
+          && request.resource.data.assetVersion is int
+          && request.resource.data.format in ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
+          && request.resource.data.contentType is string
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize > 0
+          && request.resource.data.byteSize <= 1048576
+          && request.resource.data.width is int
+          && request.resource.data.width > 0
+          && request.resource.data.height is int
+          && request.resource.data.height > 0
+          && request.resource.data.createdAt is timestamp;
+      }
+
+      match /yarns/{yarnId} {
+        allow read, delete: if isVerifiedOwner(userId);
+        allow create, update: if isVerifiedOwner(userId)
+          && request.resource.data.keys().hasOnly(['name', 'material', 'category', 'colour', 'quantity', 'unit', 'customUnit', 'createdAt', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.material is string
+          && request.resource.data.category is string
+          && request.resource.data.colour is string
+          && request.resource.data.quantity is number
+          && request.resource.data.quantity >= 0
+          && request.resource.data.unit in ['skeins', 'grams', 'yards', 'metres', 'custom']
+          && (!('customUnit' in request.resource.data) || (request.resource.data.customUnit is string && request.resource.data.customUnit.size() > 0))
+          && (request.resource.data.unit != 'custom' || ('customUnit' in request.resource.data))
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+      }
+    }
+
+    match /users/{userId}/inventory/{inventoryId} {
+      allow read, delete: if isVerifiedOwner(userId);
+      allow create, update: if isVerifiedOwner(userId)
+        && request.resource.data.keys().hasOnly(['name', 'material', 'category', 'colour', 'recommendedHookSize', 'quantity', 'unit', 'customUnit', 'createdAt', 'updatedAt'])
+        && optionalText(request.resource.data, 'name', 200)
+        && optionalText(request.resource.data, 'recommendedHookSize', 100)
+        && request.resource.data.material is string
+        && request.resource.data.material.size() > 0
+        && request.resource.data.material.size() <= 200
+        && request.resource.data.category is string
+        && request.resource.data.category.size() <= 200
+        && request.resource.data.colour is string
+        && request.resource.data.colour.size() <= 200
+        && request.resource.data.quantity is number
+        && request.resource.data.quantity > 0
+        && request.resource.data.unit in ['skeins', 'grams', 'yards', 'metres', 'custom']
+        && (!('customUnit' in request.resource.data) || (request.resource.data.customUnit is string && request.resource.data.customUnit.size() > 0 && request.resource.data.customUnit.size() <= 100))
+        && (request.resource.data.unit != 'custom' || ('customUnit' in request.resource.data))
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

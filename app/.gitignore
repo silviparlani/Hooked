@@ -1,0 +1,47 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/playwright-report/
+/test-results/
+/.npm-cache/
+/.firebase-test-config/
+
+# next.js
+/.next/
+/.vinext/
+/out/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local environment
+.env*
+!.env.example
+
+# deployment and generated files
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
+/dist/
+/.wrangler/
+/outputs/
+/work/
