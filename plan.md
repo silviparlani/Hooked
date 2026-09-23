@@ -164,7 +164,8 @@ V2 Tags and book-like design
 - [x] Implement active-project list and one WIP detail page per project.
 - [x] Add editable description, multiple pattern sources, latest update, multiple hook sizes, and multiple independently counted yarn entries under Materials.
 - [x] Make valid pattern URLs clickable and handle invalid/blank values safely.
-- [x] Use creation time plus document ID for stable ordering; do not implement reordering.
+- [x] Use creation time plus document ID as the legacy ordering fallback.
+- [x] Allow touch/pointer and keyboard reordering of Someday and On the Hook project tiles, persisted with batched display positions.
 
 ### Acceptance criteria
 
@@ -174,6 +175,7 @@ V2 Tags and book-like design
 - [x] All optional active-project fields can be blank and later edited.
 - [x] Each active project has a stable, directly addressable detail route.
 - [x] Empty, loading, cached, pending, and failure states are distinguishable.
+- [x] Reordered planned and active projects retain their position after reopening the list.
 
 ### Test scenarios
 
@@ -188,6 +190,7 @@ V2 Tags and book-like design
 - [x] Edit active-project fields independently through explicit edit/save gates where applicable.
 - [x] Load zero, one, and many projects.
 - [x] Verify stable ordering when timestamps are equal.
+- [x] Reorder projects with a drag handle and with keyboard arrows.
 - [x] Attempt to read a malformed Firestore project and show a diagnosable safe error.
 
 ## 8. Milestone 3 — Sections, piece counters, and row counters

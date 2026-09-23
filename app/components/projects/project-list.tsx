@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Baby,
   Cat,
@@ -15,10 +15,12 @@ import {
   Shirt,
   Sprout,
   Turtle,
+  GripVertical,
   type LucideIcon,
 } from 'lucide-react';
 import type { Project, ProjectStatus } from '@/lib/domain/project';
 import { observeWorkSections } from '@/lib/firebase/project-parts-repository';
+import { reorderProjects } from '@/lib/firebase/project-repository';
 import { useProjects } from './use-projects';
 
 const stitchPatterns = ['sc · dc · ch', 'dc · inc · dc', 'ch · hdc · sk', 'sc · ch · sk · sc'];
@@ -173,6 +175,97 @@ function CompletedProjectCard({ project }: { project: Project }) {
 
 export function ProjectList({ userId, status }: { userId: string; status: ProjectStatus }) {
   const { projects, loading, pending, cached, error } = useProjects(userId, status);
+  const [orderIds, setOrderIds] = useState<string[]>([]);
+  const [reorderError, setReorderError] = useState('');
+  const draggingId = useRef<string | null>(null);
+  const orderIdsRef = useRef<string[]>([]);
+  const orderedProjects = useMemo(() => {
+    if (orderIds.length === 0) return projects;
+    const byId = new Map(projects.map((project) => [project.id, project]));
+    return [
+      ...orderIds.flatMap((id) => {
+        const project = byId.get(id);
+        if (!project) return [];
+        byId.delete(id);
+        return [project];
+      }),
+      ...byId.values(),
+    ];
+  }, [orderIds, projects]);
+  const reorderable = status === 'active' || status === 'planned';
+
+  function moveProject(projectId: string, destinationId: string) {
+    setOrderIds(() => {
+      const current = orderIdsRef.current;
+      const from = current.indexOf(projectId);
+      const to = current.indexOf(destinationId);
+      if (from < 0 || to < 0 || from === to) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      orderIdsRef.current = next;
+      return next;
+    });
+  }
+
+  function beginDrag(event: PointerEvent<HTMLButtonElement>, projectId: string) {
+    draggingId.current = projectId;
+    orderIdsRef.current = orderedProjects.map((project) => project.id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.closest('.project-list-item')?.classList.add('project-list-item--dragging');
+  }
+
+  function continueDrag(event: PointerEvent<HTMLButtonElement>) {
+    const projectId = draggingId.current;
+    if (!projectId) return;
+    const destination = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('[data-project-id]')?.dataset.projectId;
+    if (destination) moveProject(projectId, destination);
+  }
+
+  async function finishDrag(event: PointerEvent<HTMLButtonElement>) {
+    const projectId = draggingId.current;
+    if (!projectId) return;
+    draggingId.current = null;
+    event.currentTarget
+      .closest('.project-list-item')
+      ?.classList.remove('project-list-item--dragging');
+    try {
+      await reorderProjects(userId, orderIdsRef.current);
+      setReorderError('');
+    } catch (caughtError) {
+      setOrderIds([]);
+      orderIdsRef.current = [];
+      setReorderError(
+        caughtError instanceof Error ? caughtError.message : 'Hooked could not save this order.',
+      );
+    }
+  }
+
+  async function moveWithKeyboard(projectId: string, change: -1 | 1) {
+    const currentIndex = orderedProjects.findIndex((project) => project.id === projectId);
+    const nextIndex = currentIndex + change;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedProjects.length) return;
+    const next = [...orderedProjects];
+    const [moved] = next.splice(currentIndex, 1);
+    next.splice(nextIndex, 0, moved);
+    orderIdsRef.current = next.map((project) => project.id);
+    setOrderIds(orderIdsRef.current);
+    try {
+      await reorderProjects(
+        userId,
+        next.map((project) => project.id),
+      );
+      setReorderError('');
+    } catch (caughtError) {
+      setOrderIds([]);
+      orderIdsRef.current = [];
+      setReorderError(
+        caughtError instanceof Error ? caughtError.message : 'Hooked could not save this order.',
+      );
+    }
+  }
 
   if (loading) return <output className="project-state">Opening the notebook…</output>;
   if (error)
@@ -188,16 +281,49 @@ export function ProjectList({ userId, status }: { userId: string; status: Projec
       {(pending || cached) && (
         <output className="sync-state">{pending ? 'Saving…' : 'Showing saved offline data'}</output>
       )}
+      {reorderError && (
+        <p className="project-state project-state--error" role="alert">
+          {reorderError}
+        </p>
+      )}
       <div className={`project-list project-list--${status}`}>
-        {projects.map((project) =>
-          status === 'active' ? (
-            <ActiveProjectCard userId={userId} project={project} key={project.id} />
-          ) : status === 'planned' ? (
-            <PlannedProjectCard project={project} key={project.id} />
-          ) : (
-            <CompletedProjectCard project={project} key={project.id} />
-          ),
-        )}
+        {orderedProjects.map((project, index) => (
+          <div className="project-list-item" data-project-id={project.id} key={project.id}>
+            {reorderable && (
+              <button
+                type="button"
+                className="project-drag-handle"
+                aria-label={`Reorder ${project.name}. Use up and down arrow keys, or drag.`}
+                onPointerDown={(event) => beginDrag(event, project.id)}
+                onPointerMove={continueDrag}
+                onPointerUp={finishDrag}
+                onPointerCancel={finishDrag}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    void moveWithKeyboard(project.id, -1);
+                  } else if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    void moveWithKeyboard(project.id, 1);
+                  }
+                }}
+                disabled={orderedProjects.length < 2}
+              >
+                <GripVertical aria-hidden="true" />
+              </button>
+            )}
+            {status === 'active' ? (
+              <ActiveProjectCard userId={userId} project={project} />
+            ) : status === 'planned' ? (
+              <PlannedProjectCard project={project} />
+            ) : (
+              <CompletedProjectCard project={project} />
+            )}
+            <span className="visually-hidden" aria-live="polite">
+              Position {index + 1} of {orderedProjects.length}
+            </span>
+          </div>
+        ))}
       </div>
     </>
   );

@@ -31,6 +31,7 @@ export type Project = {
   coverPhotoId?: string;
   completedAt?: Date;
   sourceCompletedProjectId?: string;
+  displayOrder?: number;
   createdAt: Date;
   updatedAt: Date;
   schemaVersion: 1;
@@ -58,6 +59,15 @@ function requiredDate(record: UnknownRecord, key: string) {
   const value = record[key];
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
     throw new Error(`Project field "${key}" must be a valid date.`);
+  }
+  return value;
+}
+
+function optionalNonNegativeNumber(record: UnknownRecord, key: string) {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Project field "${key}" must be a non-negative number.`);
   }
   return value;
 }
@@ -129,6 +139,7 @@ export function parseProject(id: string, value: unknown): Project {
     coverPhotoId: optionalText(value, 'coverPhotoId'),
     completedAt: value.completedAt === undefined ? undefined : requiredDate(value, 'completedAt'),
     sourceCompletedProjectId: optionalText(value, 'sourceCompletedProjectId'),
+    displayOrder: optionalNonNegativeNumber(value, 'displayOrder'),
     createdAt: requiredDate(value, 'createdAt'),
     updatedAt: requiredDate(value, 'updatedAt'),
     schemaVersion: 1 as const,
@@ -146,5 +157,11 @@ export function getSafePatternUrl(value?: string) {
 }
 
 export function compareProjects(left: Project, right: Project) {
+  if (left.displayOrder !== undefined || right.displayOrder !== undefined) {
+    const order =
+      (left.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+      (right.displayOrder ?? Number.MAX_SAFE_INTEGER);
+    if (order !== 0) return order;
+  }
   return left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id);
 }

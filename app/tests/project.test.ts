@@ -34,4 +34,17 @@ describe('project documents', () => {
     const earlier = parseProject('a', validProject);
     expect([later, earlier].sort(compareProjects).map((project) => project.id)).toEqual(['a', 'b']);
   });
+
+  it('uses a saved display order before creation time', () => {
+    const first = parseProject('first', { ...validProject, displayOrder: 0 });
+    const second = parseProject('second', {
+      ...validProject,
+      createdAt: new Date('2025-01-01'),
+      displayOrder: 1,
+    });
+    expect([second, first].sort(compareProjects).map((project) => project.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
 });

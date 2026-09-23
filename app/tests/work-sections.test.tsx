@@ -111,11 +111,12 @@ describe('WorkSections', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('opens a counter form from the section header action', async () => {
+  it('opens a counter form from the section body action', async () => {
     render(<WorkSections userId="silvi" projectId="tote" />);
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
-    fireEvent.click(screen.getByRole('button', { name: 'Add counter to Body' }));
+    fireEvent.click(screen.getByText('Body').closest('summary')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Add row counter to Body' }));
     expect(screen.getByLabelText('Stitch type')).toBeVisible();
     expect(screen.queryByPlaceholderText('Counter name')).not.toBeInTheDocument();
   });
@@ -141,7 +142,8 @@ describe('WorkSections', () => {
     render(<WorkSections userId="silvi" projectId="tote" />);
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
-    fireEvent.click(screen.getByRole('button', { name: 'Add counter to Body' }));
+    fireEvent.click(screen.getByText('Body').closest('summary')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Add row counter to Body' }));
     fireEvent.change(screen.getByLabelText('Counter target in Body'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add counter' }));
     await waitFor(() =>
@@ -159,7 +161,8 @@ describe('WorkSections', () => {
     render(<WorkSections userId="silvi" projectId="tote" />);
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
-    fireEvent.click(screen.getByRole('button', { name: 'Add counter to Body' }));
+    fireEvent.click(screen.getByText('Body').closest('summary')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Add row counter to Body' }));
     expect(screen.queryByLabelText('Custom stitch name in Body')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Stitch type'), { target: { value: 'custom' } });
     expect(screen.getByLabelText('Custom stitch name in Body')).toBeVisible();
@@ -171,10 +174,13 @@ describe('WorkSections', () => {
     render(<WorkSections userId="silvi" projectId="tote" />);
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
-    expect(screen.getByLabelText('Body section progress')).toHaveTextContent('0/51');
+    expect(screen.getByRole('button', { name: 'Edit section target for Body' })).toHaveTextContent(
+      '0/51',
+    );
     expect(screen.getByRole('button', { name: 'Decrease completed Body pieces' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit section target' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit section target for Body' }));
+    expect(screen.getByLabelText('Section target for Body')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Section target for Body'), {
       target: { value: '60' },
     });

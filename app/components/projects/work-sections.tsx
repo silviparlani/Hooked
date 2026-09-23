@@ -252,11 +252,14 @@ function SectionCard({
     }
   }
 
-  function beginCounterFromHeader(event: MouseEvent<HTMLButtonElement>) {
+  function beginCounter() {
+    setAddingCounter(true);
+  }
+
+  function handleHeaderAction(event: MouseEvent<HTMLButtonElement>, action: () => void) {
     event.preventDefault();
     event.stopPropagation();
-    setAddingCounter(true);
-    event.currentTarget.closest('details')?.setAttribute('open', '');
+    action();
   }
 
   return (
@@ -269,47 +272,69 @@ function SectionCard({
           <small>
             {complete
               ? 'Complete'
-              : section.target !== null
-                ? `${section.current}/${section.target} complete`
-                : `${counterCount} ${counterCount === 1 ? 'counter' : 'counters'}`}
+              : `${counterCount} ${counterCount === 1 ? 'counter' : 'counters'}`}
           </small>
         </span>
-        <button
-          type="button"
-          className="section-header-add"
-          aria-label={`Add counter to ${section.name}`}
-          onClick={beginCounterFromHeader}
-        >
-          + Counter
-        </button>
-      </summary>
-      <div className="section-body">
-        {section.target !== null && !editingSectionTarget && (
-          <div className="section-counter" aria-label={`${section.name} section counter`}>
-            <span className="section-counter__label">Completed pieces</span>
-            <div className="counter-controls">
+        <span className="section-header-counter">
+          {section.target === null ? (
+            <button
+              type="button"
+              className="section-target-button"
+              onClick={(event) =>
+                handleHeaderAction(event, () => {
+                  event.currentTarget.closest('details')?.setAttribute('open', '');
+                  setEditingSectionTarget(true);
+                })
+              }
+            >
+              Set target
+            </button>
+          ) : (
+            <>
               <button
                 type="button"
+                className="section-step-button"
                 aria-label={`Decrease completed ${section.name} pieces`}
-                onClick={() => changeSection(-1)}
+                onClick={(event) => handleHeaderAction(event, () => void changeSection(-1))}
                 disabled={section.current === 0}
               >
                 −
               </button>
-              <output aria-label={`${section.name} section progress`}>
-                {section.current}/{section.target}
-              </output>
               <button
                 type="button"
+                className="section-progress-button"
+                aria-label={`Edit section target for ${section.name}`}
+                onClick={(event) =>
+                  handleHeaderAction(event, () => {
+                    event.currentTarget.closest('details')?.setAttribute('open', '');
+                    setEditingSectionTarget(true);
+                  })
+                }
+              >
+                {section.current}/{section.target}
+              </button>
+              <button
+                type="button"
+                className="section-step-button"
                 aria-label={`Increase completed ${section.name} pieces`}
-                onClick={() => changeSection(1)}
+                onClick={(event) => handleHeaderAction(event, () => void changeSection(1))}
                 disabled={section.current >= section.target}
               >
                 +
               </button>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </span>
+      </summary>
+      <div className="section-body">
+        <button
+          type="button"
+          className="counter-action-button section-add-counter"
+          aria-label={`Add row counter to ${section.name}`}
+          onClick={beginCounter}
+        >
+          + Row counter
+        </button>
         {editingSectionTarget ? (
           <div className="target-editor section-target-editor">
             <label>
@@ -339,15 +364,7 @@ function SectionCard({
               Cancel
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            className="counter-action-button"
-            onClick={() => setEditingSectionTarget(true)}
-          >
-            {section.target === null ? 'Set section target' : 'Edit section target'}
-          </button>
-        )}
+        ) : null}
         {(counters[section.id] ?? []).map((counter) => (
           <CounterRow
             key={counter.id}

@@ -38,6 +38,23 @@ describe('Firestore ownership rules', () => {
     await assertSucceeds(getDoc(project));
   });
 
+  it('allows a verified owner to save a non-negative project display order', async () => {
+    const firestore = environment
+      .authenticatedContext('silvi', { email_verified: true })
+      .firestore();
+    const ordered = doc(firestore, 'users/silvi/projects/ordered');
+    const invalid = doc(firestore, 'users/silvi/projects/invalid-order');
+    const base = {
+      name: 'Ordered project',
+      status: 'active',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    };
+    await assertSucceeds(setDoc(ordered, { ...base, displayOrder: 0 }));
+    await assertFails(setDoc(invalid, { ...base, displayOrder: -1 }));
+  });
+
   it('denies another user and signed-out access', async () => {
     const ownerProject = doc(
       environment.authenticatedContext('someone-else', { email_verified: true }).firestore(),

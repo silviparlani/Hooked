@@ -154,6 +154,17 @@ export async function updateProject(userId: string, projectId: string, input: Ed
   });
 }
 
+export async function reorderProjects(userId: string, projectIds: string[]) {
+  const batch = writeBatch(getFirebaseClient().firestore);
+  projectIds.forEach((projectId, displayOrder) => {
+    batch.update(doc(projectsPath(userId), projectId), {
+      displayOrder,
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
+
 export async function startProject(userId: string, projectId: string, input: EditableProject) {
   await updateProject(userId, projectId, { ...input, status: 'active' });
 }

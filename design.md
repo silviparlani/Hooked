@@ -41,7 +41,7 @@ These are four entry points on one home screen, not four persistent navigation t
 - Multiple users collaborating on one collection.
 - Social or public sharing.
 - Automatic inventory deduction from project usage.
-- Reordering or drag-and-drop.
+- Reordering sections, counters, yarn entries, or completed projects.
 - Reusable project templates.
 - Progress-entry history.
 - Trash, undo, or recovery after confirmed deletion.
@@ -328,6 +328,9 @@ type ProjectDocument = {
   // Set only when a completed project creates a new active instance
   sourceCompletedProjectId?: string;
 
+  // User-selected order within the planned or active list
+  displayOrder?: number;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
   schemaVersion: number;
@@ -335,6 +338,8 @@ type ProjectDocument = {
 ```
 
 Missing optional fields, rather than empty placeholder objects, keep documents readable. Runtime converters must validate data read from Firestore instead of trusting a TypeScript type assertion.
+
+Planned and active project tiles can be reordered with a touch/pointer drag handle. The app writes a non-negative `displayOrder` for every project in the visible status list in one batch. Older documents without the field retain creation-time ordering until their list is first reordered. The drag handle also supports Up and Down arrow keys.
 
 ### 8.2 Section document
 

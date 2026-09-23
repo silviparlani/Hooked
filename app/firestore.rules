@@ -16,7 +16,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'name', 'status', 'description', 'patternUrl', 'materialsRequired', 'latestUpdate',
           'hookSize', 'yarn', 'amountUsed', 'coverPhotoId', 'completedAt',
-          'sourceCompletedProjectId', 'createdAt', 'updatedAt', 'schemaVersion'
+          'sourceCompletedProjectId', 'displayOrder', 'createdAt', 'updatedAt', 'schemaVersion'
         ])
         && data.name is string
         && data.name.size() > 0
@@ -29,6 +29,7 @@ service cloud.firestore {
         && optionalText(data, 'hookSize', 100)
         && optionalText(data, 'coverPhotoId', 200)
         && optionalText(data, 'sourceCompletedProjectId', 200)
+        && (!('displayOrder' in data) || (data.displayOrder is number && data.displayOrder >= 0))
         && (!('yarn' in data) || data.yarn is map)
         && (!('amountUsed' in data) || data.amountUsed is map)
         && (!('completedAt' in data) || data.completedAt is timestamp)
