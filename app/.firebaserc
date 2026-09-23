@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "demo-hooked",
+    "default": "hooked-crochet-tracker",
     "production": "hooked-crochet-tracker"
   }
 }
