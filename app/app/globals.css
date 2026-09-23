@@ -430,40 +430,33 @@ button:disabled {
   height: 100%;
 }
 
-.project-drag-handle {
-  position: absolute;
-  z-index: 2;
-  top: 0.65rem;
-  right: 0.65rem;
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgb(48 101 82 / 35%);
-  border-radius: 999px;
-  background: rgb(255 253 247 / 82%);
-  color: var(--primary);
+.project-reorder-hint {
+  margin: 0 0 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+}
+
+.project-list--active .project-list-card,
+.project-list--planned .project-list-card {
   cursor: grab;
-  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
-.project-drag-handle:active {
+.project-list-item--placeholder {
+  opacity: 0.25;
+}
+
+.project-list-item--chosen .project-list-card {
   cursor: grabbing;
+  box-shadow: 0 1rem 2rem rgb(48 101 82 / 22%);
 }
 
-.project-drag-handle svg {
-  width: 1.2rem;
-  height: 1.2rem;
+.project-list-item--floating {
+  opacity: 0.95 !important;
+  pointer-events: none;
 }
-
-.project-list-item--dragging {
-  z-index: 3;
-  opacity: 0.72;
-  transform: scale(0.98);
-}
-
 .project-list-card {
   display: flex;
   align-items: center;

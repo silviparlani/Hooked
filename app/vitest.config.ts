@@ -16,7 +16,13 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    exclude: ['tests/e2e/**', 'tests/firebase/**', 'node_modules/**'],
+    exclude: [
+      'tests/e2e/**',
+      'tests/browser/**',
+      '.wrangler/**',
+      'tests/firebase/**',
+      'node_modules/**',
+    ],
     setupFiles: ['./tests/setup.ts'],
   },
 });

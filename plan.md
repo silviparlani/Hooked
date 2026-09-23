@@ -190,7 +190,7 @@ V2 Tags and book-like design
 - [x] Edit active-project fields independently through explicit edit/save gates where applicable.
 - [x] Load zero, one, and many projects.
 - [x] Verify stable ordering when timestamps are equal.
-- [x] Reorder projects with a drag handle and with keyboard arrows.
+- [x] Reorder projects by dragging the whole card with a mouse or a touch hold, or with keyboard arrows; verify taps open projects, swipes scroll, and saved order survives reopening.
 - [x] Attempt to read a malformed Firestore project and show a diagnosable safe error.
 
 ## 8. Milestone 3 — Sections, piece counters, and row counters

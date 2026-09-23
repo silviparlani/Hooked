@@ -339,7 +339,7 @@ type ProjectDocument = {
 
 Missing optional fields, rather than empty placeholder objects, keep documents readable. Runtime converters must validate data read from Firestore instead of trusting a TypeScript type assertion.
 
-Planned and active project tiles can be reordered with a touch/pointer drag handle. The app writes a non-negative `displayOrder` for every project in the visible status list in one batch. Older documents without the field retain creation-time ordering until their list is first reordered. The drag handle also supports Up and Down arrow keys.
+Planned and active project tiles can be reordered by dragging anywhere on the card. Touch users hold briefly before dragging; a quick swipe scrolls and a tap opens the project. No separate drag handle is shown. The app writes a non-negative `displayOrder` for every project in the visible status list in one batch. Older documents without the field retain creation-time ordering until their list is first reordered. Focused project links also support Up and Down arrow keys.
 
 ### 8.2 Section document
 

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectList } from '@/components/projects/project-list';
 import { reorderProjects } from '@/lib/firebase/project-repository';
 
@@ -36,43 +36,44 @@ vi.mock('@/components/projects/use-projects', () => ({
 vi.mock('@/lib/firebase/project-repository', () => ({ reorderProjects: vi.fn() }));
 
 describe('project list reordering', () => {
-  it('moves and saves projects with keyboard-accessible drag handles', async () => {
-    vi.mocked(reorderProjects).mockResolvedValue();
+  beforeEach(() => {
+    vi.mocked(reorderProjects).mockReset().mockResolvedValue();
+  });
+
+  it('keeps cards as links, removes corner buttons, and supports keyboard reordering', async () => {
     render(<ProjectList userId="silvi" status="planned" />);
-
-    fireEvent.keyDown(screen.getByRole('button', { name: /Reorder First idea/ }), {
-      key: 'ArrowDown',
-    });
-
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    const first = screen.getByRole('link', { name: /First idea/ });
+    expect(first).toHaveAttribute('href', '/projects/one');
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
     await waitFor(() => expect(reorderProjects).toHaveBeenCalledWith('silvi', ['two', 'one']));
     expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
       'Second idea',
       'First idea',
     ]);
   });
-  it('moves and saves projects with pointer dragging', async () => {
-    vi.mocked(reorderProjects).mockClear().mockResolvedValue();
+
+  it('does not write when moving beyond a list boundary', () => {
     render(<ProjectList userId="silvi" status="planned" />);
-    const handle = screen.getByRole('button', { name: /Reorder First idea/ });
-    const destination = screen.getByRole('heading', { name: 'Second idea' });
-    Object.defineProperty(handle, 'setPointerCapture', { configurable: true, value: vi.fn() });
-    const previous = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
-    Object.defineProperty(document, 'elementFromPoint', {
-      configurable: true,
-      value: () => destination,
-    });
-    try {
-      fireEvent.pointerDown(handle, { pointerId: 1 });
-      fireEvent.pointerMove(handle, { pointerId: 1, clientX: 20, clientY: 100 });
-      fireEvent.pointerUp(handle, { pointerId: 1 });
-      await waitFor(() => expect(reorderProjects).toHaveBeenCalledWith('silvi', ['two', 'one']));
-      expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
-        'Second idea',
-        'First idea',
-      ]);
-    } finally {
-      if (previous) Object.defineProperty(document, 'elementFromPoint', previous);
-      else Reflect.deleteProperty(document, 'elementFromPoint');
-    }
+    fireEvent.keyDown(screen.getByRole('link', { name: /First idea/ }), { key: 'ArrowUp' });
+    expect(reorderProjects).not.toHaveBeenCalled();
+  });
+
+  it('restores the displayed order and reports a failed save', async () => {
+    vi.mocked(reorderProjects).mockRejectedValue(new Error('Could not save order'));
+    render(<ProjectList userId="silvi" status="planned" />);
+    fireEvent.keyDown(screen.getByRole('link', { name: /First idea/ }), { key: 'ArrowDown' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save order');
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'First idea',
+      'Second idea',
+    ]);
+  });
+
+  it('does not reorder completed projects', () => {
+    render(<ProjectList userId="silvi" status="completed" />);
+    fireEvent.keyDown(screen.getByRole('link', { name: /First idea/ }), { key: 'ArrowDown' });
+    expect(reorderProjects).not.toHaveBeenCalled();
+    expect(screen.queryByText('Hold a project, then drag to reorder.')).not.toBeInTheDocument();
   });
 });
