@@ -6,13 +6,30 @@ import {
   flattenNestedWorkSections,
   removeWorkSectionTree,
   setRowCounterComplete,
+  updateWorkSectionCounterTarget,
 } from '@/lib/firebase/project-parts-repository';
 import type { RowCounter, WorkSection } from '@/lib/domain/project-parts';
 
 const time = new Date('2026-01-01');
 const rootSections: WorkSection[] = [
-  { id: 'body', name: 'Body', parentSectionId: null, createdAt: time, updatedAt: time },
-  { id: 'straps', name: 'Straps', parentSectionId: null, createdAt: time, updatedAt: time },
+  {
+    id: 'body',
+    name: 'Body',
+    parentSectionId: null,
+    current: 0,
+    target: null,
+    createdAt: time,
+    updatedAt: time,
+  },
+  {
+    id: 'straps',
+    name: 'Straps',
+    parentSectionId: null,
+    current: 0,
+    target: null,
+    createdAt: time,
+    updatedAt: time,
+  },
 ];
 let currentSections = rootSections;
 const counters: Record<string, RowCounter[]> = {
@@ -66,6 +83,8 @@ vi.mock('@/lib/firebase/project-parts-repository', () => ({
   addWorkSection: vi.fn(),
   addRowCounter: vi.fn(),
   changeRowCounter: vi.fn(),
+  changeWorkSectionCounter: vi.fn(),
+  updateWorkSectionCounterTarget: vi.fn(),
   updateRowCounterTarget: vi.fn(),
   updateRowCounterDetails: vi.fn(),
   removeRowCounter: vi.fn(),
@@ -97,7 +116,8 @@ describe('WorkSections', () => {
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
     fireEvent.click(screen.getByRole('button', { name: 'Add counter to Body' }));
-    expect(screen.getByLabelText('Counter name in Body')).toBeVisible();
+    expect(screen.getByLabelText('Stitch type')).toBeVisible();
+    expect(screen.queryByPlaceholderText('Counter name')).not.toBeInTheDocument();
   });
 
   it('allows an open-ended counter to be marked complete', async () => {
@@ -116,20 +136,16 @@ describe('WorkSections', () => {
     );
   });
 
-  it('allows duplicate counter names in one root section', async () => {
+  it('derives the counter name from its stitch type', async () => {
     vi.mocked(addRowCounter).mockResolvedValue();
     render(<WorkSections userId="silvi" projectId="tote" />);
     await screen.findByText('Body');
     fireEvent.click(screen.getByText('Work sections').closest('summary')!);
     fireEvent.click(screen.getByRole('button', { name: 'Add counter to Body' }));
-    fireEvent.change(screen.getByLabelText('Counter name in Body'), {
-      target: { value: 'Mesh — Mesh DC' },
-    });
     fireEvent.change(screen.getByLabelText('Counter target in Body'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add counter' }));
     await waitFor(() =>
       expect(addRowCounter).toHaveBeenCalledWith('silvi', 'tote', 'body', {
-        name: 'Mesh — Mesh DC',
         target: 4,
         stitchType: 'sc',
         stitchesPerRow: null,
@@ -150,10 +166,36 @@ describe('WorkSections', () => {
     expect(screen.getByLabelText('How to produce custom stitch in Body')).toBeVisible();
   });
 
+  it('supports an optional section target and disables decrement at zero', async () => {
+    currentSections = [{ ...rootSections[0], target: 51 }];
+    render(<WorkSections userId="silvi" projectId="tote" />);
+    await screen.findByText('Body');
+    fireEvent.click(screen.getByText('Work sections').closest('summary')!);
+    expect(screen.getByLabelText('Body section progress')).toHaveTextContent('0/51');
+    expect(screen.getByRole('button', { name: 'Decrease completed Body pieces' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit section target' }));
+    fireEvent.change(screen.getByLabelText('Section target for Body'), {
+      target: { value: '60' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    await waitFor(() =>
+      expect(updateWorkSectionCounterTarget).toHaveBeenCalledWith('silvi', 'tote', 'body', 60),
+    );
+  });
+
   it('starts the compatibility migration when old subsections are found', async () => {
     currentSections = [
       ...rootSections,
-      { id: 'base-old', name: 'Base', parentSectionId: 'body', createdAt: time, updatedAt: time },
+      {
+        id: 'base-old',
+        name: 'Base',
+        parentSectionId: 'body',
+        current: 0,
+        target: null,
+        createdAt: time,
+        updatedAt: time,
+      },
     ];
     vi.mocked(flattenNestedWorkSections).mockResolvedValue();
     render(<WorkSections userId="silvi" projectId="tote" />);
@@ -173,3 +215,4 @@ describe('WorkSections', () => {
     );
   });
 });
+

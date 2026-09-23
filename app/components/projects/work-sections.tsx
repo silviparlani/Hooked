@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
+  counterDisplayName,
   isCounterComplete,
   isSectionComplete,
   stitchTypes,
@@ -13,6 +14,7 @@ import {
 import {
   addRowCounter,
   addWorkSection,
+  changeWorkSectionCounter,
   changeRowCounter,
   flattenNestedWorkSections,
   observeSectionCounters,
@@ -21,6 +23,7 @@ import {
   removeWorkSectionTree,
   setRowCounterComplete,
   updateRowCounterDetails,
+  updateWorkSectionCounterTarget,
 } from '@/lib/firebase/project-parts-repository';
 
 function countSectionCounters(
@@ -168,7 +171,6 @@ function SectionCard({
   reportError: (message: string) => void;
   onSectionDeleted: (sectionId: string) => void;
 }) {
-  const [counterName, setCounterName] = useState('');
   const [counterTarget, setCounterTarget] = useState('');
   const [stitchType, setStitchType] = useState<CounterDetails['stitchType']>('sc');
   const [stitchesPerRow, setStitchesPerRow] = useState('');
@@ -176,6 +178,8 @@ function SectionCard({
   const [customStitchInstructions, setCustomStitchInstructions] = useState('');
   const [addingCounter, setAddingCounter] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editingSectionTarget, setEditingSectionTarget] = useState(false);
+  const [sectionTarget, setSectionTarget] = useState(section.target?.toString() ?? '');
   const complete = isSectionComplete(section, counters);
   const counterCount = countSectionCounters(section, counters);
 
@@ -184,14 +188,12 @@ function SectionCard({
     reportError('');
     try {
       await addRowCounter(userId, projectId, section.id, {
-        name: counterName,
         target,
         stitchType,
         stitchesPerRow: stitchesPerRow.trim() === '' ? null : Number(stitchesPerRow),
         customStitchName,
         customStitchInstructions,
       });
-      setCounterName('');
       setCounterTarget('');
       setStitchType('sc');
       setStitchesPerRow('');
@@ -202,6 +204,37 @@ function SectionCard({
     } catch (caughtError) {
       reportError(
         caughtError instanceof Error ? caughtError.message : 'Hooked could not add the counter.',
+      );
+    }
+  }
+
+  async function saveSectionTarget() {
+    reportError('');
+    try {
+      await updateWorkSectionCounterTarget(
+        userId,
+        projectId,
+        section.id,
+        sectionTarget.trim() === '' ? null : Number(sectionTarget),
+      );
+      setEditingSectionTarget(false);
+    } catch (caughtError) {
+      reportError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Hooked could not update the section target.',
+      );
+    }
+  }
+
+  async function changeSection(change: -1 | 1) {
+    try {
+      await changeWorkSectionCounter(userId, projectId, section.id, change);
+    } catch (caughtError) {
+      reportError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Hooked could not update the section counter.',
       );
     }
   }
@@ -236,7 +269,9 @@ function SectionCard({
           <small>
             {complete
               ? 'Complete'
-              : `${counterCount} ${counterCount === 1 ? 'counter' : 'counters'}`}
+              : section.target !== null
+                ? `${section.current}/${section.target} complete`
+                : `${counterCount} ${counterCount === 1 ? 'counter' : 'counters'}`}
           </small>
         </span>
         <button
@@ -249,6 +284,70 @@ function SectionCard({
         </button>
       </summary>
       <div className="section-body">
+        {section.target !== null && !editingSectionTarget && (
+          <div className="section-counter" aria-label={`${section.name} section counter`}>
+            <span className="section-counter__label">Completed pieces</span>
+            <div className="counter-controls">
+              <button
+                type="button"
+                aria-label={`Decrease completed ${section.name} pieces`}
+                onClick={() => changeSection(-1)}
+                disabled={section.current === 0}
+              >
+                −
+              </button>
+              <output aria-label={`${section.name} section progress`}>
+                {section.current}/{section.target}
+              </output>
+              <button
+                type="button"
+                aria-label={`Increase completed ${section.name} pieces`}
+                onClick={() => changeSection(1)}
+                disabled={section.current >= section.target}
+              >
+                +
+              </button>
+            </div>
+          </div>
+        )}
+        {editingSectionTarget ? (
+          <div className="target-editor section-target-editor">
+            <label>
+              Section target
+              <input
+                aria-label={`Section target for ${section.name}`}
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={sectionTarget}
+                onChange={(event) => setSectionTarget(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <button type="button" className="secondary-button" onClick={saveSectionTarget}>
+              Save target
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setSectionTarget(section.target?.toString() ?? '');
+                setEditingSectionTarget(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="counter-action-button"
+            onClick={() => setEditingSectionTarget(true)}
+          >
+            {section.target === null ? 'Set section target' : 'Edit section target'}
+          </button>
+        )}
         {(counters[section.id] ?? []).map((counter) => (
           <CounterRow
             key={counter.id}
@@ -263,12 +362,6 @@ function SectionCard({
           <>
             {addingCounter && (
               <div className="counter-add">
-                <input
-                  aria-label={`Counter name in ${section.name}`}
-                  value={counterName}
-                  onChange={(event) => setCounterName(event.target.value)}
-                  placeholder="Counter name"
-                />
                 <label>
                   Stitch type
                   <select
@@ -335,7 +428,6 @@ function SectionCard({
                     type="button"
                     className="secondary-button"
                     onClick={() => {
-                      setCounterName('');
                       setCounterTarget('');
                       setAddingCounter(false);
                     }}
@@ -391,7 +483,6 @@ function CounterRow({
   reportError: (message: string) => void;
 }) {
   const [editingTarget, setEditingTarget] = useState(false);
-  const [name, setName] = useState(counter.name);
   const [stitchType, setStitchType] = useState<CounterDetails['stitchType']>(
     counter.stitchType ?? 'sc',
   );
@@ -403,6 +494,7 @@ function CounterRow({
   const [target, setTarget] = useState(counter.target?.toString() ?? '');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const complete = isCounterComplete(counter);
+  const displayName = counterDisplayName(counter);
 
   async function change(changeBy: -1 | 1) {
     try {
@@ -421,7 +513,6 @@ function CounterRow({
     reportError('');
     try {
       await updateRowCounterDetails(userId, projectId, sectionId, counter.id, {
-        name,
         target: value,
         stitchType,
         stitchesPerRow: stitchesPerRow.trim() === '' ? null : Number(stitchesPerRow),
@@ -464,7 +555,7 @@ function CounterRow({
   return (
     <article className={`row-counter${complete ? ' row-counter--complete' : ''}`}>
       <div className="counter-heading">
-        <strong>{counter.name}</strong>
+        <strong>{displayName}</strong>
         {complete && <span>Complete</span>}
       </div>
       {(counter.stitchType || counter.stitchesPerRow) && (
@@ -485,18 +576,18 @@ function CounterRow({
       <div className="counter-controls">
         <button
           type="button"
-          aria-label={`Decrease ${counter.name}`}
+          aria-label={`Decrease ${displayName}`}
           onClick={() => change(-1)}
           disabled={counter.current === 0}
         >
           −
         </button>
-        <output aria-label={`${counter.name} progress`}>
+        <output aria-label={`${displayName} progress`}>
           {counter.target === null ? counter.current : `${counter.current}/${counter.target}`}
         </output>
         <button
           type="button"
-          aria-label={`Increase ${counter.name}`}
+          aria-label={`Increase ${displayName}`}
           onClick={() => change(1)}
           disabled={counter.target !== null && counter.current >= counter.target}
         >
@@ -505,10 +596,6 @@ function CounterRow({
       </div>
       {editingTarget ? (
         <div className="target-editor">
-          <label>
-            Name
-            <input value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
           <label>
             Stitch type
             <select
@@ -621,3 +708,4 @@ function CounterRow({
     </article>
   );
 }
+

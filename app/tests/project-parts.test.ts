@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSectionTree,
   isSectionComplete,
+  isRowCycleComplete,
   nextCounterValue,
   validateCounterDetails,
   validateCounterValue,
@@ -14,6 +15,8 @@ const section = (id: string, parentSectionId: string | null = null): WorkSection
   id,
   name: id,
   parentSectionId,
+  current: 0,
+  target: null,
   createdAt: time,
   updatedAt: time,
 });
@@ -64,6 +67,16 @@ describe('row counters', () => {
     expect(nextCounterValue(20, null, 1)).toBe(21);
   });
 
+  it('finishes a piece only when every targeted row counter reaches its target', () => {
+    const rows = [
+      { current: 17, target: 18 },
+      { current: 3, target: 3 },
+    ];
+    expect(isRowCycleComplete(rows, 0, 18)).toBe(true);
+    expect(isRowCycleComplete(rows, 0, 17)).toBe(false);
+    expect(isRowCycleComplete([{ current: 4, target: null }], 0, 5)).toBe(false);
+  });
+
   it('rejects negative, decimal, and non-numeric values', () => {
     expect(() => validateCounterValue(-1, 'current')).toThrow('non-negative whole number');
     expect(() => validateCounterValue(1.5, 'target')).toThrow('non-negative whole number');
@@ -73,18 +86,17 @@ describe('row counters', () => {
 
   it('validates stitch details and requires instructions for custom stitches', () => {
     expect(
-      validateCounterDetails({ name: 'Mesh', stitchType: 'dc', stitchesPerRow: 30, target: 20 }),
-    ).toMatchObject({ name: 'Mesh', stitchType: 'dc', stitchesPerRow: 30 });
+      validateCounterDetails({ stitchType: 'dc', stitchesPerRow: 30, target: 20 }),
+    ).toMatchObject({ stitchType: 'dc', stitchesPerRow: 30 });
     expect(() =>
       validateCounterDetails({
-        name: 'Edge',
         stitchType: 'custom',
         stitchesPerRow: null,
         target: null,
       }),
     ).toThrow('custom stitch name');
     expect(() =>
-      validateCounterDetails({ name: 'Edge', stitchType: 'sc', stitchesPerRow: 0, target: null }),
+      validateCounterDetails({ stitchType: 'sc', stitchesPerRow: 0, target: null }),
     ).toThrow('positive whole number');
   });
 });
@@ -112,3 +124,4 @@ describe('derived section completion', () => {
     );
   });
 });
+

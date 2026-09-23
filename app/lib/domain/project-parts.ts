@@ -4,6 +4,8 @@ export type WorkSection = {
   id: string;
   name: string;
   parentSectionId: string | null;
+  current: number;
+  target: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -26,7 +28,6 @@ export const stitchTypes = ['sc', 'dc', 'hdc', 'tc', 'sk', 'sl st', 'custom'] as
 export type StitchType = (typeof stitchTypes)[number];
 
 export type CounterDetails = {
-  name: string;
   target: number | null;
   stitchType: StitchType;
   customStitchName?: string;
@@ -35,8 +36,6 @@ export type CounterDetails = {
 };
 
 export function validateCounterDetails(details: CounterDetails): CounterDetails {
-  const name = details.name.trim();
-  if (!name) throw new Error('Enter a counter name.');
   if (!stitchTypes.includes(details.stitchType)) throw new Error('Choose a valid stitch type.');
   validateCounterValue(details.target, 'target');
   if (
@@ -49,12 +48,18 @@ export function validateCounterDetails(details: CounterDetails): CounterDetails 
   if (details.stitchType === 'custom' && (!customStitchName || !customStitchInstructions))
     throw new Error('Enter the custom stitch name and how to produce it.');
   return {
-    name,
     target: details.target,
     stitchType: details.stitchType,
     stitchesPerRow: details.stitchesPerRow,
     ...(details.stitchType === 'custom' && { customStitchName, customStitchInstructions }),
   };
+}
+
+export function counterDisplayName(
+  counter: Pick<RowCounter, 'name' | 'stitchType' | 'customStitchName'>,
+) {
+  if (counter.stitchType === 'custom') return counter.customStitchName?.trim() || counter.name;
+  return counter.stitchType?.toUpperCase() || counter.name;
 }
 
 export type SectionNode = WorkSection & { children: SectionNode[] };
@@ -74,6 +79,21 @@ export function nextCounterValue(current: number, target: number | null, change:
   validateCounterValue(current, 'current');
   validateCounterValue(target, 'target');
   return Math.max(0, target === null ? current + change : Math.min(target, current + change));
+}
+
+export function isRowCycleComplete(
+  counters: Pick<RowCounter, 'current' | 'target'>[],
+  changedIndex: number,
+  changedCurrent: number,
+) {
+  return (
+    counters.length > 0 &&
+    counters.every(
+      (counter, index) =>
+        counter.target !== null &&
+        (index === changedIndex ? changedCurrent : counter.current) === counter.target,
+    )
+  );
 }
 
 export function buildSectionTree(sections: WorkSection[]): SectionNode[] {
@@ -114,6 +134,7 @@ export function isSectionComplete(
   section: SectionNode,
   countersBySection: Record<string, RowCounter[]>,
 ): boolean {
+  if (section.target !== null) return section.current === section.target;
   const counters = countersBySection[section.id] ?? [];
   const childrenComplete =
     section.children.length > 0 &&
@@ -137,3 +158,4 @@ export type ProjectYarnEntry = {
   createdAt: Date;
   updatedAt: Date;
 };
+

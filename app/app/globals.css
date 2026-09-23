@@ -816,6 +816,27 @@ button:disabled {
   background: #eaf1e9;
 }
 
+.section-counter {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border: 1px solid #a9c2b0;
+  border-radius: 0.8rem;
+  background: rgb(255 253 247 / 55%);
+}
+
+.section-counter__label {
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.section-target-editor {
+  padding: 0.75rem;
+  border: 1px solid #bfd0c3;
+  border-radius: 0.8rem;
+}
+
 .row-counter--complete {
   border-color: #8eb19d;
   background: #dceadf;
@@ -1599,3 +1620,4 @@ button:disabled {
     gap: 0.45rem;
   }
 }
+

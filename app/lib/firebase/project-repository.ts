@@ -169,6 +169,14 @@ export async function getIncompleteSectionNames(userId: string, projectId: strin
     name: typeof section.data().name === 'string' ? section.data().name : 'Unnamed section',
     parentSectionId:
       typeof section.data().parentSectionId === 'string' ? section.data().parentSectionId : null,
+    current:
+      typeof section.data().current === 'number'
+        ? validateCounterValue(section.data().current, 'current')
+        : 0,
+    target:
+      section.data().target === undefined
+        ? null
+        : validateCounterValue(section.data().target, 'target'),
     createdAt: new Date(0),
     updatedAt: new Date(0),
   }));
@@ -270,3 +278,4 @@ export async function deleteProject(userId: string, projectId: string) {
   finalBatch.delete(project);
   await finalBatch.commit();
 }
+

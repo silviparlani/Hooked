@@ -190,14 +190,15 @@ V2 Tags and book-like design
 - [x] Verify stable ordering when timestamps are equal.
 - [x] Attempt to read a malformed Firestore project and show a diagnosable safe error.
 
-## 8. Milestone 3 — Nested sections and row counters
+## 8. Milestone 3 — Sections, piece counters, and row counters
 
 ### Deliverables
 
 - [x] Implement section and counter document converters and validation.
 - [x] Support any number of root section documents.
 - [x] Flatten legacy child sections into descriptively named counters under their root section.
-- [x] Add multiple named counters per section, including duplicate names.
+- [x] Add multiple stitch-derived row counters per section without a separate name field.
+- [x] Add an optional completed-piece target and counter to each section.
 - [x] Implement increment, decrement, target editing, and open-ended targets.
 - [x] Implement derived counter and section completion.
 - [x] Surface malformed trees without crashing.
@@ -211,6 +212,8 @@ V2 Tags and book-like design
 - [x] Counters never become negative or increment past a target.
 - [x] Open-ended counters display without an artificial denominator.
 - [x] Section completion updates when one of its counters changes.
+- [x] Completing every targeted row counter advances the optional section counter and resets the rows.
+- [x] Row decrement at zero and section decrement at zero remain at zero without rolling backward.
 - [x] There is no reorder or drag-and-drop control.
 - [x] Section deletion removes precisely the selected section and its counters.
 
@@ -237,7 +240,7 @@ V2 Tags and book-like design
 
 - [x] Rapidly tap increment and verify no updates are lost.
 - [x] Update the same counter from two tabs and document last-write behavior.
-- [x] Add duplicate counter names to one section.
+- [x] Add multiple counters with the same stitch type to one section.
 - [x] Delete a leaf section.
 - [x] Delete a section containing multiple counters.
 - [x] Cancel deletion and verify nothing changes.
@@ -478,3 +481,4 @@ Record material changes in chronological order. Product or architecture changes 
 - [ ] Production environment contains no test data or accounts created by automation.
 - [ ] Deployment rollback procedure is ready.
 - [ ] Known limitations are documented.
+

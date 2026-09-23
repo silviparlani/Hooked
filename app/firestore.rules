@@ -45,11 +45,14 @@ service cloud.firestore {
       match /sections/{sectionId} {
         allow read, delete: if isVerifiedOwner(userId);
         allow create, update: if isVerifiedOwner(userId)
-          && request.resource.data.keys().hasOnly(['name', 'parentSectionId', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(['name', 'parentSectionId', 'current', 'target', 'createdAt', 'updatedAt'])
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 200
           && request.resource.data.parentSectionId == null
+          && (!request.resource.data.keys().hasAny(['current']) || (request.resource.data.current is int && request.resource.data.current >= 0))
+          && (!request.resource.data.keys().hasAny(['target']) || request.resource.data.target == null || (request.resource.data.target is int && request.resource.data.target > 0))
+          && (!request.resource.data.keys().hasAny(['target']) || request.resource.data.target == null || !request.resource.data.keys().hasAny(['current']) || request.resource.data.current <= request.resource.data.target)
           && request.resource.data.createdAt is timestamp
           && request.resource.data.updatedAt is timestamp;
 
@@ -144,3 +147,4 @@ service cloud.firestore {
     }
   }
 }
+

@@ -104,6 +104,34 @@ describe('Firestore ownership rules', () => {
     );
   });
 
+  it('allows bounded section counters and rejects invalid section progress', async () => {
+    const firestore = environment
+      .authenticatedContext('silvi', { email_verified: true })
+      .firestore();
+    const valid = doc(firestore, 'users/silvi/projects/cardigan/sections/granny-squares');
+    const invalid = doc(firestore, 'users/silvi/projects/cardigan/sections/too-many-squares');
+    await assertSucceeds(
+      setDoc(valid, {
+        name: 'Granny squares',
+        parentSectionId: null,
+        current: 12,
+        target: 51,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(invalid, {
+        name: 'Invalid squares',
+        parentSectionId: null,
+        current: 52,
+        target: 51,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+
   it('denies negative yarn quantities', async () => {
     const firestore = environment
       .authenticatedContext('silvi', { email_verified: true })
@@ -241,3 +269,4 @@ describe('Firestore ownership rules', () => {
     await assertFails(getDoc(item));
   });
 });
+

@@ -6,7 +6,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  increment,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -19,6 +18,7 @@ import {
 import { quantityUnits } from '@/lib/domain/project';
 import {
   stitchTypes,
+  isRowCycleComplete,
   validateCounterDetails,
   validateCounterValue,
   type ProjectYarnEntry,
@@ -67,6 +67,12 @@ export function observeWorkSections(
               id: item.id,
               name: data.name,
               parentSectionId: data.parentSectionId,
+              current:
+                typeof data.current === 'number'
+                  ? validateCounterValue(data.current, 'current')
+                  : 0,
+              target:
+                data.target === undefined ? null : validateCounterValue(data.target, 'target'),
               createdAt: date(data.createdAt),
               updatedAt: date(data.updatedAt),
             };
@@ -104,6 +110,8 @@ export async function addWorkSection(
   await addDoc(projectParts(userId, projectId, 'sections'), {
     name: trimmed,
     parentSectionId,
+    current: 0,
+    target: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -241,8 +249,13 @@ export async function addRowCounter(
   details: CounterDetails,
 ) {
   const validated = validateCounterDetails(details);
+  const name =
+    validated.stitchType === 'custom'
+      ? validated.customStitchName!
+      : validated.stitchType.toUpperCase();
   await addDoc(counterParts(userId, projectId, sectionId), {
     ...validated,
+    name,
     current: 0,
     completed: false,
     createdAt: serverTimestamp(),
@@ -258,11 +271,16 @@ export async function updateRowCounterDetails(
   details: CounterDetails,
 ) {
   const validated = validateCounterDetails(details);
+  const name =
+    validated.stitchType === 'custom'
+      ? validated.customStitchName!
+      : validated.stitchType.toUpperCase();
   const reference = doc(counterParts(userId, projectId, sectionId), counterId);
   const snapshot = await getDoc(reference);
   const current = validateCounterValue(snapshot.data()?.current, 'current');
   await updateDoc(reference, {
     ...validated,
+    name,
     current: validated.target === null ? current : Math.min(current, validated.target),
     completed: false,
     customStitchName: validated.customStitchName ?? deleteField(),
@@ -293,9 +311,111 @@ export async function changeRowCounter(
   change: -1 | 1,
 ) {
   const reference = doc(counterParts(userId, projectId, sectionId), counterId);
-  await updateDoc(reference, {
-    current: increment(change),
-    updatedAt: serverTimestamp(),
+  const sectionReference = doc(projectParts(userId, projectId, 'sections'), sectionId);
+  const counterSnapshot = await getDocs(counterParts(userId, projectId, sectionId));
+  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+    const [sectionSnapshot, ...counterDocuments] = await Promise.all([
+      transaction.get(sectionReference),
+      ...counterSnapshot.docs.map((item) => transaction.get(item.ref)),
+    ]);
+    const selectedIndex = counterSnapshot.docs.findIndex((item) => item.id === counterId);
+    if (selectedIndex < 0) throw new Error('This row counter could not be found.');
+    const selected = counterDocuments[selectedIndex];
+    const current = validateCounterValue(selected.data()?.current, 'current');
+    const target = validateCounterValue(selected.data()?.target, 'target');
+
+    if (change === -1) {
+      transaction.update(reference, {
+        current: Math.max(0, current - 1),
+        completed: false,
+        updatedAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    const sectionTarget =
+      sectionSnapshot.data()?.target === undefined
+        ? null
+        : validateCounterValue(sectionSnapshot.data()?.target, 'target');
+    const sectionCurrent =
+      typeof sectionSnapshot.data()?.current === 'number'
+        ? validateCounterValue(sectionSnapshot.data()?.current, 'current')
+        : 0;
+    if (sectionTarget !== null && sectionCurrent >= sectionTarget) return;
+
+    const nextCurrent = target === null ? current + 1 : Math.min(target, current + 1);
+    const cycleComplete =
+      sectionTarget !== null &&
+      isRowCycleComplete(
+        counterDocuments.map((item) => ({
+          current: validateCounterValue(item.data()?.current, 'current'),
+          target: validateCounterValue(item.data()?.target, 'target'),
+        })),
+        selectedIndex,
+        nextCurrent,
+      );
+
+    if (!cycleComplete) {
+      transaction.update(reference, { current: nextCurrent, updatedAt: serverTimestamp() });
+      return;
+    }
+
+    transaction.update(sectionReference, {
+      current: Math.min(sectionTarget, sectionCurrent + 1),
+      updatedAt: serverTimestamp(),
+    });
+    counterSnapshot.docs.forEach((item) =>
+      transaction.update(item.ref, {
+        current: 0,
+        completed: false,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+}
+
+export async function updateWorkSectionCounterTarget(
+  userId: string,
+  projectId: string,
+  sectionId: string,
+  target: number | null,
+) {
+  validateCounterValue(target, 'target');
+  if (target !== null && target < 1) throw new Error('Section target must be at least 1.');
+  const reference = doc(projectParts(userId, projectId, 'sections'), sectionId);
+  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const current =
+      typeof snapshot.data()?.current === 'number'
+        ? validateCounterValue(snapshot.data()?.current, 'current')
+        : 0;
+    transaction.update(reference, {
+      target,
+      current: target === null ? 0 : Math.min(current, target),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function changeWorkSectionCounter(
+  userId: string,
+  projectId: string,
+  sectionId: string,
+  change: -1 | 1,
+) {
+  const reference = doc(projectParts(userId, projectId, 'sections'), sectionId);
+  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const target = validateCounterValue(snapshot.data()?.target, 'target');
+    if (target === null) throw new Error('Set a section target first.');
+    const current =
+      typeof snapshot.data()?.current === 'number'
+        ? validateCounterValue(snapshot.data()?.current, 'current')
+        : 0;
+    transaction.update(reference, {
+      current: Math.max(0, Math.min(target, current + change)),
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 
@@ -458,3 +578,4 @@ export async function changeYarnQuantity(
 export async function removeProjectYarn(userId: string, projectId: string, yarnId: string) {
   await deleteDoc(doc(projectParts(userId, projectId, 'yarns'), yarnId));
 }
+

@@ -108,32 +108,33 @@ An active project may contain:
 - hook size;
 - structured yarn material, category, colour, quantity, and quantity unit;
 - optional, manually edited yarn amount used;
-- root sections and named row counters.
+- root sections with optional piece targets and stitch-derived row counters.
 
 All fields except the name and status may be blank. Inventory is not automatically changed by a project's yarn fields or amount used.
 
 ### 4.4 Sections and counters
 
-A section is a top-level project container with any number of named counters. Each counter records a stage name, stitch type (`sc`, `dc`, `hdc`, `tc`, `sk`, `sl st`, or custom), an optional stitches-per-row value, and its row progress and optional row target. Custom stitches also record their display name and production instructions. Older nested data is flattened into its root section on load before the obsolete child documents are removed.
+A section is a top-level project container with any number of row counters. It may optionally count repeated pieces, such as 51 granny squares. Each row counter records its stitch type (`sc`, `dc`, `hdc`, `tc`, `sk`, `sl st`, or custom), an optional stitches-per-row value, and its row progress and optional row target. Its display name is derived from the stitch type; custom stitches record their own display name and production instructions. Older nested data is flattened into its root section on load before the obsolete child documents are removed.
 
 Counters:
 
-- have a required display name;
+- derive their display name from the selected stitch;
 - increment and decrement by one;
 - never fall below zero;
 - may have a non-negative integer target or be open-ended (`target: null`);
 - stop incrementing when the target is reached;
 - allow direct editing of the target;
-- may use the same name as another counter in the same section.
+
+When a section has a piece target, completing every targeted row counter increments the section's completed-piece count and resets those row counters to zero for the next piece. Open-ended row counters prevent this automatic rollover because they have no completion point. Section controls can increment or decrement the completed-piece count directly, never outside zero and the target. Decrementing row progress at zero never rolls the section back to the previous piece.
 
 Completion is derived rather than independently stored:
 
 1. A targeted counter is complete when `current === target`.
 2. Open-ended counters do not contribute to automatic completion.
-3. A section is complete when all its counters are complete.
-4. A section with only open-ended counters is not automatically complete.
-5. A section with no counters is not automatically complete.
-6. Lowering a counter or raising its target reopens it and all affected ancestor sections.
+3. A section with a piece target is complete when its completed-piece count reaches that target.
+4. A section without a piece target is complete when all its counters are complete.
+5. A section with only open-ended counters is not automatically complete.
+6. A section with no counters is not automatically complete.
 7. Project completion remains manual regardless of section state.
 
 Computing section completion from counters prevents a stored `isComplete` flag from becoming inconsistent with its source data.
@@ -341,12 +342,14 @@ Missing optional fields, rather than empty placeholder objects, keep documents r
 type SectionDocument = {
   name: string;
   parentSectionId: string | null;
+  current: number;
+  target: number | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
 ```
 
-All sections for a project form an adjacency-list tree. A null parent identifies a root section. Child sections point to another section document in the same project.
+New sections are root-level only. `parentSectionId` remains solely for reading and flattening legacy nested data. `current` and `target` form the optional completed-piece counter.
 
 A section belongs to its project through its Firestore path: `users/{uid}/projects/{projectId}/sections/{sectionId}`. The `projectId` therefore does not need to be repeated inside the section document. Reading the project's `sections` subcollection returns only sections belonging to that project. `parentSectionId` has a different purpose: it connects one section to another section inside that same project to create nesting.
 
@@ -356,7 +359,11 @@ The application must reject self-parenting, missing parents, parents from anothe
 
 ```ts
 type CounterDocument = {
-  name: string;
+  name: string; // legacy/derived compatibility value; not entered separately
+  stitchType: "sc" | "dc" | "hdc" | "tc" | "sk" | "sl_st" | "custom";
+  customStitchName?: string;
+  customStitchInstructions?: string;
+  stitchesPerRow: number | null;
   current: number;
   target: number | null;
   createdAt: Timestamp;
@@ -676,3 +683,4 @@ These do not block the product design and must be resolved in Milestone 0 or the
 - Exact visual language for the bookshelf, notebooks, album, and inventory entry point.
 
 Each resolution must update this document and, when architectural, add an ADR row.
+
