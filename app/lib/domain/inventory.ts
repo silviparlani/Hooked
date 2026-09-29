@@ -1,3 +1,4 @@
+import { skeinsToMilli, validateConversion, type YarnConversion } from './materials';
 import type { QuantityUnit } from './project';
 
 export type InventoryItem = {
@@ -7,6 +8,10 @@ export type InventoryItem = {
   category: string;
   colour: string;
   recommendedHookSize: string;
+  conversion?: YarnConversion;
+  milliSkeins?: number;
+  linkedUsageCount?: number;
+  usageRevision?: number;
   quantity: number;
   unit: QuantityUnit;
   customUnit?: string;
@@ -24,6 +29,7 @@ export type InventoryDraft = Pick<
   | 'quantity'
   | 'unit'
   | 'customUnit'
+  | 'conversion'
 >;
 
 export function inventoryDisplayName(
@@ -86,19 +92,19 @@ export function validateInventoryDraft(draft: InventoryDraft) {
   const category = draft.category.trim();
   const colour = draft.colour.trim();
   const recommendedHookSize = draft.recommendedHookSize.trim();
-  const customUnit = draft.customUnit?.trim();
+  const milliSkeins = skeinsToMilli(draft.quantity);
+  const conversion = validateConversion(draft.conversion);
+  if (draft.unit !== 'skeins') throw new Error('Enter the available quantity in skeins.');
   if (!material) throw new Error('Enter the yarn material.');
-  if (!Number.isFinite(draft.quantity) || draft.quantity <= 0)
-    throw new Error('Quantity must be a number greater than zero.');
-  if (draft.unit === 'custom' && !customUnit) throw new Error('Enter a custom unit.');
   return {
     name,
     material,
     category,
     colour,
     recommendedHookSize,
-    quantity: draft.quantity,
-    unit: draft.unit,
-    ...(draft.unit === 'custom' && { customUnit }),
+    quantity: milliSkeins / 1000,
+    milliSkeins,
+    conversion,
+    unit: 'skeins' as const,
   };
 }

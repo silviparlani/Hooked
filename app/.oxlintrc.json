@@ -22,7 +22,8 @@
     "coverage/**",
     "components/ui/**",
     "hooks/use-mobile.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".openai/**"
   ],
   "rules": {
     "no-array-constructor": "error",

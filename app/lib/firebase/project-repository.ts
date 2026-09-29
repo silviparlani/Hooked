@@ -5,8 +5,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -33,6 +35,7 @@ import {
   type RowCounter,
   type WorkSection,
 } from '@/lib/domain/project-parts';
+import { refundProjectMaterials, requireConnection } from './materials-repository';
 import { getFirebaseClient } from './client';
 import { removeAllProjectPhotos } from './project-photo-repository';
 import { clearSyncSource, reportSyncSource } from './sync-state';
@@ -56,6 +59,7 @@ const projectConverter: FirestoreDataConverter<Project> = {
       createdAt: toDateValue(data.createdAt),
       updatedAt: toDateValue(data.updatedAt),
       completedAt: toDateValue(data.completedAt),
+      latestUpdateAt: toDateValue(data.latestUpdateAt),
     });
   },
 };
@@ -129,6 +133,8 @@ export async function createProject(userId: string, input: EditableProject) {
     compactObject({
       ...input,
       name: name.value,
+      materialsMode: input.status === 'completed' ? 'historical' : 'consumed',
+      ...(input.latestUpdate?.trim() ? { latestUpdateAt: serverTimestamp() } : {}),
       schemaVersion: 1,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -140,8 +146,15 @@ export async function createProject(userId: string, input: EditableProject) {
 export async function updateProject(userId: string, projectId: string, input: EditableProject) {
   const name = validateProjectName(input.name);
   if (!name.valid) throw new Error(name.message);
-  await updateDoc(doc(projectsPath(userId), projectId), {
+  const reference = doc(projectsPath(userId), projectId);
+  const existing = await getDoc(reference);
+  if (!existing.exists() || existing.data().deleting)
+    throw new Error('This project is being deleted or no longer exists.');
+  await updateDoc(reference, {
     ...input,
+    ...((existing.data().latestUpdate ?? '') !== (input.latestUpdate?.trim() ?? '')
+      ? { latestUpdateAt: serverTimestamp() }
+      : {}),
     name: name.value,
     description: input.description?.trim() || deleteField(),
     patternUrl: input.patternUrl?.trim() || deleteField(),
@@ -220,29 +233,32 @@ export async function getIncompleteSectionNames(userId: string, projectId: strin
 export async function completeProject(userId: string, projectId: string) {
   const { firestore } = getFirebaseClient();
   const project = doc(projectsPath(userId), projectId);
-  const existing = await getDoc(project);
-  await updateDoc(project, {
-    status: 'completed',
-    ...(existing.data()?.completedAt ? {} : { completedAt: serverTimestamp() }),
-    updatedAt: serverTimestamp(),
-    materialsRequired: deleteField(),
-    latestUpdate: deleteField(),
-    hookSize: deleteField(),
-    yarn: deleteField(),
-    amountUsed: deleteField(),
-    sourceCompletedProjectId: deleteField(),
+  requireConnection();
+  await runTransaction(firestore, async (tx) => {
+    const existing = await tx.get(project);
+    if (!existing.exists() || existing.data().deleting)
+      throw new Error('This project cannot be completed.');
+    tx.update(project, {
+      status: 'completed',
+      materialsMode:
+        existing.data().materialsMode ??
+        (existing.data().status === 'active' ? 'consumed' : 'historical'),
+      ...(existing.data()?.completedAt ? {} : { completedAt: serverTimestamp() }),
+      updatedAt: serverTimestamp(),
+      materialsRequired: deleteField(),
+      latestUpdate: deleteField(),
+      latestUpdateAt: deleteField(),
+      hookSize: deleteField(),
+      sourceCompletedProjectId: deleteField(),
+    });
   });
-  const [sections, yarns] = await Promise.all([
-    getDocs(collection(project, 'sections')),
-    getDocs(collection(project, 'yarns')),
-  ]);
+  const sections = await getDocs(collection(project, 'sections'));
   const counterSnapshots = await Promise.all(
     sections.docs.map((section) => getDocs(collection(section.ref, 'counters'))),
   );
   const references = [
     ...counterSnapshots.flatMap((snapshot) => snapshot.docs.map((item) => item.ref)),
     ...sections.docs.map((item) => item.ref),
-    ...yarns.docs.map((item) => item.ref),
   ];
   for (let index = 0; index < references.length; index += 450) {
     const batch = writeBatch(firestore);
@@ -267,10 +283,17 @@ export async function reactivateProject(userId: string, project: Project) {
 export async function deleteProject(userId: string, projectId: string) {
   const { firestore } = getFirebaseClient();
   const project = doc(projectsPath(userId), projectId);
+  await refundProjectMaterials(userId, projectId);
   await removeAllProjectPhotos(userId, projectId);
-  const [sections, yarns] = await Promise.all([
+  const [sections, yarns, usage] = await Promise.all([
     getDocs(collection(project, 'sections')),
     getDocs(collection(project, 'yarns')),
+    getDocsFromServer(
+      query(
+        collection(firestore, 'users', userId, 'materialUsage'),
+        where('projectId', '==', projectId),
+      ),
+    ),
   ]);
   const counterSnapshots = await Promise.all(
     sections.docs.map((section) => getDocs(collection(section.ref, 'counters'))),
@@ -279,6 +302,7 @@ export async function deleteProject(userId: string, projectId: string) {
     ...counterSnapshots.flatMap((snapshot) => snapshot.docs.map((item) => item.ref)),
     ...sections.docs.map((item) => item.ref),
     ...yarns.docs.map((item) => item.ref),
+    ...usage.docs.map((item) => item.ref),
   ];
   for (let index = 0; index < references.length; index += 450) {
     const batch = writeBatch(firestore);

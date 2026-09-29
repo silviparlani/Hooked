@@ -1,13 +1,12 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
   deleteField,
   doc,
   onSnapshot,
   serverTimestamp,
   Timestamp,
-  updateDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { quantityUnits } from '@/lib/domain/project';
 import {
@@ -15,6 +14,7 @@ import {
   type InventoryDraft,
   type InventoryItem,
 } from '@/lib/domain/inventory';
+import { requireConnection } from './materials-repository';
 import { getFirebaseClient } from './client';
 
 function inventory(userId: string) {
@@ -55,6 +55,10 @@ export function observeInventory(
               colour: data.colour,
               recommendedHookSize:
                 typeof data.recommendedHookSize === 'string' ? data.recommendedHookSize : '',
+              conversion: data.conversion,
+              milliSkeins: data.milliSkeins,
+              linkedUsageCount: data.linkedUsageCount,
+              usageRevision: data.usageRevision,
               quantity: data.quantity,
               unit: data.unit,
               ...(typeof data.customUnit === 'string' && { customUnit: data.customUnit }),
@@ -75,23 +79,58 @@ export function observeInventory(
 }
 
 export async function addInventoryItem(userId: string, draft: InventoryDraft) {
+  requireConnection();
   const value = validateInventoryDraft(draft);
   await addDoc(inventory(userId), {
     ...value,
+    linkedUsageCount: 0,
+    usageRevision: 0,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 }
 
-export async function updateInventoryItem(userId: string, itemId: string, draft: InventoryDraft) {
+export async function updateInventoryItem(
+  userId: string,
+  itemId: string,
+  draft: InventoryDraft,
+  expected?: InventoryItem,
+) {
+  requireConnection();
   const value = validateInventoryDraft(draft);
-  await updateDoc(doc(inventory(userId), itemId), {
-    ...value,
-    customUnit: value.unit === 'custom' ? value.customUnit : deleteField(),
-    updatedAt: serverTimestamp(),
+  const ref = doc(inventory(userId), itemId);
+  await runTransaction(getFirebaseClient().firestore, async (tx) => {
+    const snapshot = await tx.get(ref);
+    const old = snapshot.data();
+    if (!old) throw new Error('This yarn no longer exists.');
+    if (
+      expected &&
+      (old.quantity !== expected.quantity ||
+        (old.usageRevision ?? 0) !== (expected.usageRevision ?? 0) ||
+        old.updatedAt.toMillis() !== expected.updatedAt.getTime())
+    )
+      throw new Error(
+        'This yarn changed while you were editing. Cancel and reopen to use the latest stock.',
+      );
+    tx.update(ref, {
+      ...value,
+      customUnit: deleteField(),
+      linkedUsageCount: old.linkedUsageCount ?? 0,
+      usageRevision: old.usageRevision ?? 0,
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 
 export async function removeInventoryItem(userId: string, itemId: string) {
-  await deleteDoc(doc(inventory(userId), itemId));
+  requireConnection();
+  const ref = doc(inventory(userId), itemId);
+  await runTransaction(getFirebaseClient().firestore, async (tx) => {
+    const snapshot = await tx.get(ref);
+    if ((snapshot.data()?.linkedUsageCount ?? 0) > 0)
+      throw new Error(
+        'This yarn is linked to a project. Remove its materials entries before deleting it.',
+      );
+    tx.delete(ref);
+  });
 }

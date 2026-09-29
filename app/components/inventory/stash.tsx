@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { quantityUnits, type QuantityUnit } from '@/lib/domain/project';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { conversionUnits, type ConversionUnit } from '@/lib/domain/materials';
+import { Journal } from '@/components/journal/journal';
 import {
   inventoryDisplayName,
   inventoryPastelColour,
@@ -84,14 +85,6 @@ export function Stash({ userId }: { userId: string }) {
           {items.length} {items.length === 1 ? 'yarn' : 'yarns'}
           {pending ? ' · Saving…' : cached ? ' · Offline copy' : ''}
         </p>
-        <button
-          type="button"
-          className="primary-button"
-          onClick={() => setAdding(true)}
-          disabled={adding}
-        >
-          Add yarn
-        </button>
       </div>
       {adding && (
         <YarnForm
@@ -125,18 +118,31 @@ export function Stash({ userId }: { userId: string }) {
           {error}
         </p>
       )}
-      {!loading && !error && items.length === 0 && !adding && (
-        <div className="stash-empty">
-          <span aria-hidden="true">× × × × ×</span>
-          <h2>Your stash is empty</h2>
-          <p>Add a yarn when you are ready.</p>
-        </div>
+      {!loading && !error && (
+        <Journal
+          title="Stash"
+          indexAction={
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setAdding(true)}
+              disabled={adding}
+            >
+              Add yarn
+            </button>
+          }
+          pages={items.map((item) => ({
+            id: item.id,
+            title: inventoryDisplayName(item),
+            subtitle: item.quantity + ' ' + item.unit,
+            colour: inventoryPastelColour(item.colour),
+          }))}
+        >
+          {(id) => (
+            <StashItem key={id} userId={userId} item={items.find((item) => item.id === id)!} />
+          )}
+        </Journal>
       )}
-      <div className="stash-list">
-        {items.map((item) => (
-          <StashItem key={item.id} userId={userId} item={item} />
-        ))}
-      </div>
     </>
   );
 }
@@ -209,34 +215,47 @@ function YarnForm({
             inputMode="decimal"
             type="number"
             min="0"
-            step="any"
-            value={draft.quantity}
+            step="0.001"
+            max="1000000"
+            value={Number.isFinite(draft.quantity) ? draft.quantity : ''}
             onChange={(event) => change('quantity', event.target.valueAsNumber)}
           />
         </label>
+        <p>Quantities are measured in skeins.</p>
         <label>
-          Unit
+          1 skein equals
+          <input
+            type="number"
+            min="0.000001"
+            step="any"
+            inputMode="decimal"
+            value={draft.conversion?.value ?? ''}
+            onChange={(event) =>
+              change('conversion', {
+                value: event.target.valueAsNumber,
+                unit: draft.conversion?.unit ?? 'grams',
+              })
+            }
+          />
+        </label>
+        <label>
+          Label unit
           <select
-            value={draft.unit}
-            onChange={(event) => change('unit', event.target.value as QuantityUnit)}
+            value={draft.conversion?.unit ?? 'grams'}
+            onChange={(event) =>
+              change('conversion', {
+                value: draft.conversion?.value ?? 0,
+                unit: event.target.value as ConversionUnit,
+              })
+            }
           >
-            {quantityUnits.map((unit) => (
+            {conversionUnits.map((unit) => (
               <option key={unit} value={unit}>
-                {unit === 'custom' ? 'Custom…' : unit}
+                {unit}
               </option>
             ))}
           </select>
         </label>
-        {draft.unit === 'custom' && (
-          <label>
-            Custom unit
-            <input
-              value={draft.customUnit ?? ''}
-              onChange={(event) => change('customUnit', event.target.value)}
-              placeholder="e.g. cakes"
-            />
-          </label>
-        )}
       </div>
       {error && (
         <p role="alert" className="project-form__error">
@@ -250,6 +269,7 @@ function YarnForm({
 
 function StashItem({ userId, item }: { userId: string; item: InventoryItem }) {
   const [editing, setEditing] = useState(false);
+  const editBase = useRef(item);
   const [draft, setDraft] = useState<InventoryDraft>(item);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -257,14 +277,10 @@ function StashItem({ userId, item }: { userId: string; item: InventoryItem }) {
   const unit = item.unit === 'custom' ? item.customUnit : item.unit;
   const displayName = inventoryDisplayName(item);
   async function save() {
-    if (draft.quantity === 0) {
-      setDeleteReason('zero');
-      return;
-    }
     setBusy(true);
     setError('');
     try {
-      await updateInventoryItem(userId, item.id, draft);
+      await updateInventoryItem(userId, item.id, draft, editBase.current);
       setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Hooked could not save this yarn.');
@@ -287,7 +303,7 @@ function StashItem({ userId, item }: { userId: string; item: InventoryItem }) {
         {deleteReason === 'zero'
           ? `“${displayName}” has no quantity left. Remove it from your stash?`
           : `Delete “${displayName}” permanently?`}{' '}
-        This will not affect any projects.
+        Yarn linked to projects cannot be deleted.
       </p>
       <div>
         <button type="button" className="delete-button" onClick={remove} disabled={busy}>
@@ -375,27 +391,43 @@ function StashItem({ userId, item }: { userId: string; item: InventoryItem }) {
           </div>
         )}
       </dl>
+      {item.conversion ? (
+        <p className="stash-conversion">
+          1 skein = {item.conversion.value} {item.conversion.unit}
+        </p>
+      ) : (
+        <output>
+          Needs setup: enter the available skeins and label conversion before using this yarn.
+          Existing quantity: {item.quantity} {unit}.
+        </output>
+      )}
       <div className="stash-tile-actions">
-        <button type="button" className="secondary-button" onClick={() => setEditing(true)}>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            editBase.current = item;
+            setDraft({
+              ...item,
+              unit: 'skeins',
+              quantity: item.unit === 'skeins' ? item.quantity : Number.NaN,
+            });
+            setEditing(true);
+          }}
+        >
           Edit
         </button>
         <button
           type="button"
           className="delete-button"
           onClick={() => setDeleteReason('delete')}
-          disabled={busy}
+          disabled={busy || (item.linkedUsageCount ?? 0) > 0}
+          title={(item.linkedUsageCount ?? 0) > 0 ? 'This yarn is linked to a project.' : undefined}
         >
           {busy ? 'Deleting…' : 'Delete'}
         </button>
-        <button
-          type="button"
-          className="secondary-button"
-          disabled
-          title="Use will be added in a later checkpoint"
-        >
-          Use
-        </button>
       </div>
+      <p className="stash-usage-hint">Record yarn use in your project’s Materials used section.</p>
       {confirmation}
       {error && (
         <p role="alert" className="project-form__error">

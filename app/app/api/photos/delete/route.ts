@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
   if (!token) return json(401, 'Sign in again before deleting this photo.');
 
-  let body: { projectId?: unknown; photoId?: unknown };
+  let body: { projectId?: unknown; photoId?: unknown; reference?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     return json(401, 'Sign in again before deleting this photo.');
   }
 
-  const documentUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId)}/databases/(default)/documents/users/${encodeURIComponent(localId)}/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}`;
+  const documentUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId)}/databases/(default)/documents/users/${encodeURIComponent(localId)}/projects/${encodeURIComponent(projectId)}/${body.reference === true ? 'referencePhotos' : 'photos'}/${encodeURIComponent(photoId)}`;
   const photoResponse = await fetch(documentUrl, {
     headers: { authorization: `Bearer ${token}` },
   });

@@ -25,6 +25,9 @@ export type Project = {
   patternUrl?: string;
   materialsRequired?: string;
   latestUpdate?: string;
+  latestUpdateAt?: Date;
+  materialsMode?: 'consumed' | 'historical';
+  deleting?: boolean;
   hookSize?: string;
   yarn?: ProjectYarn;
   amountUsed?: Quantity;
@@ -133,6 +136,15 @@ export function parseProject(id: string, value: unknown): Project {
     patternUrl: optionalText(value, 'patternUrl'),
     materialsRequired: optionalText(value, 'materialsRequired'),
     latestUpdate: optionalText(value, 'latestUpdate'),
+    latestUpdateAt:
+      value.latestUpdateAt === undefined ? undefined : requiredDate(value, 'latestUpdateAt'),
+    materialsMode:
+      value.materialsMode === 'consumed'
+        ? ('consumed' as const)
+        : value.materialsMode === 'historical'
+          ? ('historical' as const)
+          : undefined,
+    deleting: value.deleting === true,
     hookSize: optionalText(value, 'hookSize'),
     yarn: parseYarn(value.yarn),
     amountUsed: parseQuantity(value.amountUsed, 'amountUsed'),
@@ -157,11 +169,9 @@ export function getSafePatternUrl(value?: string) {
 }
 
 export function compareProjects(left: Project, right: Project) {
-  if (left.displayOrder !== undefined || right.displayOrder !== undefined) {
-    const order =
-      (left.displayOrder ?? Number.MAX_SAFE_INTEGER) -
-      (right.displayOrder ?? Number.MAX_SAFE_INTEGER);
-    if (order !== 0) return order;
-  }
-  return left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id);
+  const date = (project: Project) =>
+    project.status === 'completed'
+      ? (project.completedAt?.getTime() ?? 0)
+      : project.updatedAt.getTime();
+  return date(right) - date(left) || left.id.localeCompare(right.id);
 }

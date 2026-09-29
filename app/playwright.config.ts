@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  outputDir: './test-results/e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
@@ -25,7 +26,7 @@ export default defineConfig({
         ...devices['iPhone 15 Pro'],
         browserName: 'chromium',
         channel: process.env.CI ? undefined : 'msedge',
-        viewport: { width: 393, height: 852 },
+        viewport: { width: 402, height: 874 },
       },
     },
   ],

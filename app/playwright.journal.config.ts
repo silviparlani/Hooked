@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/browser',
+  outputDir: './test-results/journal',
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
   reporter: 'list',
@@ -11,8 +12,15 @@ export default defineConfig({
     channel: process.env.CI ? undefined : 'msedge',
   },
   projects: [
-    { name: 'desktop-reordering', use: { ...devices['Desktop Chrome'] } },
-    { name: 'touch-reordering', use: { ...devices['iPhone 15 Pro'], browserName: 'chromium' } },
+    { name: 'desktop-journal', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'iphone-16-pro-journal',
+      use: {
+        ...devices['iPhone 15 Pro'],
+        viewport: { width: 402, height: 874 },
+        browserName: 'chromium',
+      },
+    },
   ],
   webServer: {
     command: 'npx vite --config tests/browser/vite.config.ts',

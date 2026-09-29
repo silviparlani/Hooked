@@ -35,16 +35,27 @@ describe('project documents', () => {
     expect([later, earlier].sort(compareProjects).map((project) => project.id)).toEqual(['a', 'b']);
   });
 
-  it('uses a saved display order before creation time', () => {
-    const first = parseProject('first', { ...validProject, displayOrder: 0 });
-    const second = parseProject('second', {
+  it('ignores old manual order and sorts by most recent update', () => {
+    const first = parseProject('a', { ...validProject, displayOrder: 0 });
+    const latest = parseProject('z', {
       ...validProject,
-      createdAt: new Date('2025-01-01'),
-      displayOrder: 1,
+      displayOrder: 9,
+      updatedAt: new Date('2026-02-01'),
     });
-    expect([second, first].sort(compareProjects).map((project) => project.id)).toEqual([
-      'first',
-      'second',
-    ]);
+    expect([first, latest].sort(compareProjects).map((project) => project.id)).toEqual(['z', 'a']);
+  });
+  it('uses completion dates for Made rather than later edits', () => {
+    const first = parseProject('a', {
+      ...validProject,
+      status: 'completed',
+      completedAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-03-01'),
+    });
+    const latest = parseProject('z', {
+      ...validProject,
+      status: 'completed',
+      completedAt: new Date('2026-02-01'),
+    });
+    expect([first, latest].sort(compareProjects).map((project) => project.id)).toEqual(['z', 'a']);
   });
 });

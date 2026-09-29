@@ -11,7 +11,16 @@ import {
   removeProjectPhoto,
 } from '@/lib/firebase/project-photo-repository';
 
-export function ProjectPhotos({ userId, projectId }: { userId: string; projectId: string }) {
+export function ProjectPhotos({
+  userId,
+  projectId,
+  reference = false,
+}: {
+  userId: string;
+  projectId: string;
+  reference?: boolean;
+}) {
+  const maximum = reference ? 1 : MAX_PROJECT_PHOTOS;
   const [photos, setPhotos] = useState<ProjectPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -19,8 +28,15 @@ export function ProjectPhotos({ userId, projectId }: { userId: string; projectId
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(
-    () => observeProjectPhotos(userId, projectId, setPhotos, (caught) => setError(caught.message)),
-    [projectId, userId],
+    () =>
+      observeProjectPhotos(
+        userId,
+        projectId,
+        setPhotos,
+        (caught) => setError(caught.message),
+        reference,
+      ),
+    [projectId, userId, reference],
   );
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
@@ -28,14 +44,18 @@ export function ProjectPhotos({ userId, projectId }: { userId: string; projectId
     event.target.value = '';
     if (!file) return;
     if (!online) return setError('Connect to the internet before adding a photo.');
-    if (photos.length >= MAX_PROJECT_PHOTOS)
-      return setError('This project already has five photos.');
+    if (photos.length >= maximum)
+      return setError(
+        reference
+          ? 'Only one reference image is allowed.'
+          : 'This project already has five photos.',
+      );
     setBusy(true);
     setError('');
     let uploaded: Awaited<ReturnType<typeof uploadCompletedProjectPhoto>> | undefined;
     try {
       uploaded = await uploadCompletedProjectPhoto(file);
-      await addProjectPhoto(userId, projectId, uploaded);
+      await addProjectPhoto(userId, projectId, uploaded, reference);
     } catch (caught) {
       if (uploaded?.deleteToken)
         await deleteRecentCloudinaryUpload(uploaded.deleteToken).catch(() => undefined);
@@ -50,7 +70,7 @@ export function ProjectPhotos({ userId, projectId }: { userId: string; projectId
     setBusy(true);
     setError('');
     try {
-      await removeProjectPhoto(userId, projectId, photo.id);
+      await removeProjectPhoto(userId, projectId, photo.id, reference);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Hooked could not remove the photo.');
     } finally {
@@ -59,18 +79,18 @@ export function ProjectPhotos({ userId, projectId }: { userId: string; projectId
   }
 
   return (
-    <section className="project-photos" aria-labelledby="project-photos-heading">
+    <section className="project-photos" aria-label={reference ? 'Reference image' : 'Photos'}>
       <div className="project-photos__heading">
         <div>
-          <h2 id="project-photos-heading">Photos</h2>
+          <h2>{reference ? 'Reference image' : 'Photos'}</h2>
           <span>
-            {photos.length}/{MAX_PROJECT_PHOTOS}
+            {photos.length}/{maximum}
           </span>
         </div>
         <button
           type="button"
           className="primary-button"
-          disabled={!online || busy || photos.length >= MAX_PROJECT_PHOTOS}
+          disabled={!online || busy || photos.length >= maximum}
           onClick={() => input.current?.click()}
         >
           {busy ? 'Uploading…' : 'Add photo'}
@@ -94,7 +114,7 @@ export function ProjectPhotos({ userId, projectId }: { userId: string; projectId
             <article key={photo.id} className="photo-card">
               <Image
                 src={photo.secureUrl}
-                alt="Completed crochet project"
+                alt={reference ? 'Project reference' : 'Completed crochet project'}
                 width={photo.width}
                 height={photo.height}
                 unoptimized

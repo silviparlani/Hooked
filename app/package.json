@@ -15,8 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:reorder": "playwright test --config playwright.reorder.config.ts",
-    "test:firebase": "firebase emulators:exec --project demo-hooked --only firestore \"vitest run --config vitest.firebase.config.ts\""
+    "test:reorder": "playwright test --config playwright.journal.config.ts",
+    "test:firebase": "firebase emulators:exec --project demo-hooked --only firestore \"vitest run --config vitest.firebase.config.ts\"",
+    "test:journal": "playwright test --config playwright.journal.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

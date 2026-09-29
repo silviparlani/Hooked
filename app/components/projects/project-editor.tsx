@@ -17,6 +17,8 @@ import {
   startProject,
   updateProject,
 } from '@/lib/firebase/project-repository';
+import { MaterialsUsed } from './materials-used';
+import { GrowingTextarea } from './growing-textarea';
 import { ProjectYarns } from './project-yarns';
 import { ProjectPhotos } from './project-photos';
 import { WorkSections } from './work-sections';
@@ -301,15 +303,32 @@ export function ProjectEditor({
     }
   }
 
+  if (project?.deleting)
+    return (
+      <section className="delete-confirmation">
+        <p>
+          Deletion is in progress. Materials already returned to Stash will not be returned twice.
+        </p>
+        <button type="button" className="delete-button" onClick={remove} disabled={deleting}>
+          {deleting ? 'Finishing deletion…' : 'Resume deletion'}
+        </button>
+        {error && <p role="alert">{error}</p>}
+      </section>
+    );
+
   return (
     <form className="project-form" onSubmit={save}>
       <label>
         Name
         <input required value={name} onChange={(event) => setName(event.target.value)} />
       </label>
-      <label>
+      <label htmlFor="project-description">
         Description
-        <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+        <GrowingTextarea
+          id="project-description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        />
       </label>
       {!project && status === 'completed' && (
         <label>
@@ -408,9 +427,10 @@ export function ProjectEditor({
         )}
       </section>
       {status === 'active' && (
-        <label>
+        <label htmlFor="project-latest-update">
           Latest update
-          <textarea
+          <GrowingTextarea
+            id="project-latest-update"
             value={latestUpdate}
             onChange={(event) => setLatestUpdate(event.target.value)}
           />
@@ -422,7 +442,8 @@ export function ProjectEditor({
           className={`collapsible-panel${editingMaterials ? ' collapsible-panel--editing' : ''}`}
         >
           <summary>
-            Materials {editingMaterials && <span className="editing-badge">Editing</span>}
+            {status === 'active' ? 'Materials used' : 'Materials'}{' '}
+            {editingMaterials && <span className="editing-badge">Editing</span>}
           </summary>
           <div className="collapsible-panel__body">
             {editingMaterials ? (
@@ -446,7 +467,21 @@ export function ProjectEditor({
               </div>
             )}
             {project ? (
-              <ProjectYarns userId={userId} projectId={project.id} editing={editingMaterials} />
+              status === 'active' ? (
+                <>
+                  <MaterialsUsed
+                    userId={userId}
+                    projectId={project.id}
+                    editing={editingMaterials}
+                  />
+                  <details>
+                    <summary>Earlier material notes</summary>
+                    <ProjectYarns userId={userId} projectId={project.id} editing={false} />
+                  </details>
+                </>
+              ) : (
+                <ProjectYarns userId={userId} projectId={project.id} editing={editingMaterials} />
+              )
             ) : (
               <p className="project-state">Save this project before adding yarn.</p>
             )}
@@ -471,6 +506,15 @@ export function ProjectEditor({
               ))}
           </div>
         </details>
+      )}
+      {project && <ProjectPhotos userId={userId} projectId={project.id} reference />}
+      {status === 'completed' && project && (
+        <MaterialsUsed
+          userId={userId}
+          projectId={project.id}
+          editing
+          historical={project.materialsMode !== 'consumed'}
+        />
       )}
       {status === 'completed' && project && (
         <ProjectPhotos userId={userId} projectId={project.id} />
@@ -526,8 +570,9 @@ export function ProjectEditor({
           aria-label="Confirm completion"
         >
           <p>
-            Move “{project.name}” to Made? Working details, materials, sections, and counters will
-            be permanently removed.
+            Move “{project.name}” to Made? Working details, sections, and counters will be
+            permanently removed. Materials used and their label conversions will be retained; stock
+            will not be deducted again.
           </p>
           {incompleteSections.length > 0 && (
             <div>
@@ -565,7 +610,10 @@ export function ProjectEditor({
       )}
       {project && confirmingDelete && (
         <section className="delete-confirmation" aria-label="Confirm deletion">
-          <p>Delete “{project.name}” permanently? This cannot be undone.</p>
+          <p>
+            Delete “{project.name}” permanently? Consumed yarn will return to your stash; historical
+            entries leave stock unchanged. This cannot be undone.
+          </p>
           <div>
             <button
               type="button"

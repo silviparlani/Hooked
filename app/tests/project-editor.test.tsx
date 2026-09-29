@@ -11,6 +11,9 @@ import {
   updateProject,
 } from '@/lib/firebase/project-repository';
 
+vi.mock('@/components/projects/materials-used', () => ({
+  MaterialsUsed: () => <div>Materials used</div>,
+}));
 const push = vi.fn();
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));

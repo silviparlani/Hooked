@@ -1,19 +1,18 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDoc,
   getDocs,
   onSnapshot,
-  runTransaction,
+  runTransaction as firestoreRunTransaction,
   serverTimestamp,
-  setDoc,
   Timestamp,
-  updateDoc,
   writeBatch,
   type DocumentReference,
+  type CollectionReference,
+  type DocumentData,
+  type Transaction,
 } from 'firebase/firestore';
 import { quantityUnits } from '@/lib/domain/project';
 import {
@@ -29,6 +28,50 @@ import {
 } from '@/lib/domain/project-parts';
 import { getFirebaseClient } from './client';
 import { clearSyncSource, reportSyncSource } from './sync-state';
+
+// Working changes also update the journal's sort date, in the same commit.
+// The progress-note timestamp is deliberately untouched.
+function parentProject(reference: DocumentReference | CollectionReference) {
+  return doc(reference.firestore, reference.path.split('/').slice(0, 4).join('/'));
+}
+async function addProjectPart(reference: CollectionReference, data: DocumentData) {
+  const target = doc(reference);
+  await setProjectPart(target, data);
+  return target;
+}
+async function setProjectPart(reference: DocumentReference, data: DocumentData) {
+  const batch = writeBatch(reference.firestore);
+  batch.set(reference, data);
+  batch.update(parentProject(reference), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+async function updateProjectPart(reference: DocumentReference, data: DocumentData) {
+  const batch = writeBatch(reference.firestore);
+  batch.update(reference, data);
+  batch.update(parentProject(reference), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+async function deleteProjectPart(reference: DocumentReference) {
+  const batch = writeBatch(reference.firestore);
+  batch.delete(reference);
+  batch.update(parentProject(reference), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+async function runProjectTransaction(
+  userId: string,
+  projectId: string,
+  action: (transaction: Transaction) => Promise<void>,
+) {
+  const db = getFirebaseClient().firestore;
+  const parent = doc(db, 'users', userId, 'projects', projectId);
+  return firestoreRunTransaction(db, async (transaction) => {
+    const project = await transaction.get(parent);
+    if (!project.exists() || project.data().deleting || project.data().status === 'completed')
+      throw new Error('This project is no longer available for working changes.');
+    await action(transaction);
+    transaction.update(parent, { updatedAt: serverTimestamp() });
+  });
+}
 
 function projectParts(userId: string, projectId: string, part: 'sections' | 'yarns') {
   return collection(getFirebaseClient().firestore, 'users', userId, 'projects', projectId, part);
@@ -107,7 +150,7 @@ export async function addWorkSection(
     const parent = await getDoc(doc(projectParts(userId, projectId, 'sections'), parentSectionId));
     if (!parent.exists()) throw new Error('The parent section could not be found in this project.');
   }
-  await addDoc(projectParts(userId, projectId, 'sections'), {
+  await addProjectPart(projectParts(userId, projectId, 'sections'), {
     name: trimmed,
     parentSectionId,
     current: 0,
@@ -146,7 +189,7 @@ export async function flattenNestedWorkSections(userId: string, projectId: strin
     if (sourceCounters.empty && !parents.has(section.id)) {
       const placeholder = doc(targetCollection, `${section.id}__section`);
       if (!(await getDoc(placeholder)).exists())
-        await setDoc(placeholder, {
+        await setProjectPart(placeholder, {
           name: names.join(' — '),
           current: 0,
           target: null,
@@ -156,14 +199,14 @@ export async function flattenNestedWorkSections(userId: string, projectId: strin
         });
     } else if (!sourceCounters.empty) {
       for (const counter of sourceCounters.docs)
-        await setDoc(doc(targetCollection, `${section.id}__${counter.id}`), {
+        await setProjectPart(doc(targetCollection, `${section.id}__${counter.id}`), {
           ...counter.data(),
           name: [...names, counter.data().name].filter(Boolean).join(' — '),
           updatedAt: serverTimestamp(),
         });
       await commitDeletes(sourceCounters.docs.map((item) => item.ref));
     }
-    await deleteDoc(section.ref);
+    await deleteProjectPart(section.ref);
   }
 }
 
@@ -253,7 +296,7 @@ export async function addRowCounter(
     validated.stitchType === 'custom'
       ? validated.customStitchName!
       : validated.stitchType.toUpperCase();
-  await addDoc(counterParts(userId, projectId, sectionId), {
+  await addProjectPart(counterParts(userId, projectId, sectionId), {
     ...validated,
     name,
     current: 0,
@@ -278,7 +321,7 @@ export async function updateRowCounterDetails(
   const reference = doc(counterParts(userId, projectId, sectionId), counterId);
   const snapshot = await getDoc(reference);
   const current = validateCounterValue(snapshot.data()?.current, 'current');
-  await updateDoc(reference, {
+  await updateProjectPart(reference, {
     ...validated,
     name,
     current: validated.target === null ? current : Math.min(current, validated.target),
@@ -300,7 +343,7 @@ export async function setRowCounterComplete(
   const snapshot = await getDoc(reference);
   if (snapshot.data()?.target !== null)
     throw new Error('Only counters without a target can be completed manually.');
-  await updateDoc(reference, { completed, updatedAt: serverTimestamp() });
+  await updateProjectPart(reference, { completed, updatedAt: serverTimestamp() });
 }
 
 export async function changeRowCounter(
@@ -313,7 +356,7 @@ export async function changeRowCounter(
   const reference = doc(counterParts(userId, projectId, sectionId), counterId);
   const sectionReference = doc(projectParts(userId, projectId, 'sections'), sectionId);
   const counterSnapshot = await getDocs(counterParts(userId, projectId, sectionId));
-  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+  await runProjectTransaction(userId, projectId, async (transaction) => {
     const [sectionSnapshot, ...counterDocuments] = await Promise.all([
       transaction.get(sectionReference),
       ...counterSnapshot.docs.map((item) => transaction.get(item.ref)),
@@ -383,7 +426,7 @@ export async function updateWorkSectionCounterTarget(
   validateCounterValue(target, 'target');
   if (target !== null && target < 1) throw new Error('Section target must be at least 1.');
   const reference = doc(projectParts(userId, projectId, 'sections'), sectionId);
-  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+  await runProjectTransaction(userId, projectId, async (transaction) => {
     const snapshot = await transaction.get(reference);
     const current =
       typeof snapshot.data()?.current === 'number'
@@ -404,7 +447,7 @@ export async function changeWorkSectionCounter(
   change: -1 | 1,
 ) {
   const reference = doc(projectParts(userId, projectId, 'sections'), sectionId);
-  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+  await runProjectTransaction(userId, projectId, async (transaction) => {
     const snapshot = await transaction.get(reference);
     const target = validateCounterValue(snapshot.data()?.target, 'target');
     if (target === null) throw new Error('Set a section target first.');
@@ -428,7 +471,7 @@ export async function updateRowCounterTarget(
 ) {
   validateCounterValue(target, 'target');
   const reference = doc(counterParts(userId, projectId, sectionId), counterId);
-  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+  await runProjectTransaction(userId, projectId, async (transaction) => {
     const snapshot = await transaction.get(reference);
     const current = validateCounterValue(snapshot.data()?.current, 'current');
     transaction.update(reference, {
@@ -446,13 +489,14 @@ export async function removeRowCounter(
   sectionId: string,
   counterId: string,
 ) {
-  await deleteDoc(doc(counterParts(userId, projectId, sectionId), counterId));
+  await deleteProjectPart(doc(counterParts(userId, projectId, sectionId), counterId));
 }
 
 async function commitDeletes(references: DocumentReference[]) {
   for (let index = 0; index < references.length; index += 450) {
     const batch = writeBatch(getFirebaseClient().firestore);
     references.slice(index, index + 450).forEach((reference) => batch.delete(reference));
+    batch.update(parentProject(references[index]), { updatedAt: serverTimestamp() });
     await batch.commit();
   }
 }
@@ -531,7 +575,7 @@ export function observeProjectYarns(
 }
 
 export async function addProjectYarn(userId: string, projectId: string, name: string) {
-  await addDoc(projectParts(userId, projectId, 'yarns'), {
+  await addProjectPart(projectParts(userId, projectId, 'yarns'), {
     name,
     material: '',
     category: '',
@@ -545,7 +589,7 @@ export async function addProjectYarn(userId: string, projectId: string, name: st
 
 export async function updateProjectYarn(userId: string, projectId: string, yarn: ProjectYarnEntry) {
   if (yarn.unit === 'custom' && !yarn.customUnit?.trim()) throw new Error('Enter a custom unit.');
-  await updateDoc(doc(projectParts(userId, projectId, 'yarns'), yarn.id), {
+  await updateProjectPart(doc(projectParts(userId, projectId, 'yarns'), yarn.id), {
     name: yarn.name.trim() || 'Yarn',
     material: yarn.material.trim(),
     category: yarn.category.trim(),
@@ -564,7 +608,7 @@ export async function changeYarnQuantity(
   change: -1 | 1,
 ) {
   const reference = doc(projectParts(userId, projectId, 'yarns'), yarnId);
-  await runTransaction(getFirebaseClient().firestore, async (transaction) => {
+  await runProjectTransaction(userId, projectId, async (transaction) => {
     const snapshot = await transaction.get(reference);
     const current = snapshot.data()?.quantity;
     if (typeof current !== 'number') throw new Error('This yarn quantity is invalid.');
@@ -576,6 +620,6 @@ export async function changeYarnQuantity(
 }
 
 export async function removeProjectYarn(userId: string, projectId: string, yarnId: string) {
-  await deleteDoc(doc(projectParts(userId, projectId, 'yarns'), yarnId));
+  await deleteProjectPart(doc(projectParts(userId, projectId, 'yarns'), yarnId));
 }
 

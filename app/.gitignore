@@ -45,3 +45,7 @@ tsconfig.tsbuildinfo
 /.wrangler/
 /outputs/
 /work/
+
+# Generated deployment snapshots (may contain bundled configuration)
+/.openai/*.tar.gz
+/.openai/site-stage-*/

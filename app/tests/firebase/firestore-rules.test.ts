@@ -248,7 +248,7 @@ describe('Firestore ownership rules', () => {
     await assertFails(getDoc(counter));
   });
 
-  it('allows valid inventory and denies zero quantity', async () => {
+  it('allows valid inventory including zero quantity', async () => {
     const firestore = environment
       .authenticatedContext('silvi', { email_verified: true })
       .firestore();
@@ -260,6 +260,10 @@ describe('Firestore ownership rules', () => {
         category: 'DK',
         colour: 'Green',
         quantity: 0.5,
+        milliSkeins: 500,
+        conversion: { value: 100, unit: 'grams' },
+        linkedUsageCount: 0,
+        usageRevision: 0,
         unit: 'skeins',
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),

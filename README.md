@@ -17,15 +17,15 @@ Hooked is a mobile-first crochet project tracker built as an installable progres
 
 ### Project sections and counters
 
-![A Hooked project with named stitch counters and row targets](docs/images/work-sections.svg)
+![A Hooked project with named stitch counters and row targets](docs/images/work-sections.png)
 
 ### Someday ideas
 
-![The Someday project-idea screen](docs/images/someday.svg)
+![The Someday project-idea screen](docs/images/someday.png)
 
 ### Yarn stash on iPhone
 
-<img src="docs/images/stash-mobile.svg" alt="The Hooked yarn stash displayed on an iPhone" width="390">
+<img src="docs/images/stash-mobile.png" alt="The Hooked yarn stash displayed on an iPhone" width="390">
 
 ## Technology
 
@@ -96,4 +96,3 @@ Production environment variables are configured in Cloudflare rather than commit
 ## Privacy
 
 Hooked is designed for private, authenticated project data. Firebase rules restrict data to its owner, while completed-project image delivery uses Cloudinary URLs. Passwords, authentication tokens, personal photos, and environment secrets must never be committed to the repository.
-

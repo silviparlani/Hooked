@@ -45,3 +45,7 @@ Pages and components must not construct Firestore paths directly. Firebase-speci
 ## Sensitive data
 
 Do not commit `.env.local`, passwords, authentication tokens, private project text, or personal photographs. Firebase web identifiers are not server secrets, but environment files remain ignored so development and production configuration cannot be confused accidentally.
+
+## V2 journal and materials
+
+The implemented v2 behavior, data fields, compatibility notes, and screenshots are recorded in [the v2 design](../docs/v2/design.md). See [the v2 implementation and verification plan](../docs/v2/plan.md) for checks and release prerequisites. Run `npm run test:journal` for the isolated journal browser checks. These changes require the updated Firestore rules; no production migration is automatic.

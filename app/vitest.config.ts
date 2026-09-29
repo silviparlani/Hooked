@@ -18,6 +18,7 @@ export default defineConfig({
     environment: 'jsdom',
     exclude: [
       'tests/e2e/**',
+      '.openai/**',
       'tests/browser/**',
       '.wrangler/**',
       'tests/firebase/**',

@@ -12,11 +12,87 @@ service cloud.firestore {
       return !(field in data) || (data[field] is string && data[field].size() <= maximum);
     }
 
+
+    function usagePath(userId, id) { return /databases/$(database)/documents/users/$(userId)/materialUsage/$(id); }
+    function projectPath(userId, id) { return /databases/$(database)/documents/users/$(userId)/projects/$(id); }
+    function stockPath(userId, id) { return /databases/$(database)/documents/users/$(userId)/inventory/$(id); }
+    function validConversion(c) {
+      return c is map && c.keys().hasOnly(['value', 'unit']) && c.value is number
+        && c.value > 0 && c.value <= 1000000000 && c.unit in ['grams', 'metres', 'yards'];
+    }
+    function validMilli(n) { return n is int && n >= 0 && n <= 1000000000; }
+    function previousUsage(userId, id) {
+      return exists(usagePath(userId, id)) ? get(usagePath(userId, id)).data : {'milliSkeins': 0, 'version': 0};
+    }
+    function linkDelta(before, after) {
+      return (after.milliSkeins > 0 ? 1 : 0) - (before.milliSkeins > 0 ? 1 : 0);
+    }
+    function validProjectAccounting(userId, projectId) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let entry = getAfter(usagePath(userId, after.lastUsageId)).data;
+      let oldEntry = previousUsage(userId, after.lastUsageId);
+      return entry.projectId == projectId && entry.version == oldEntry.version + 1
+        && after.get('usageRevision', 0) == before.get('usageRevision', 0) + 1
+        && after.get('usageCount', 0) == before.get('usageCount', 0) + linkDelta(oldEntry, entry)
+        && after.get('usageCount', 0) >= 0;
+    }
+    function validStockAccounting(userId, inventoryId) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let entry = getAfter(usagePath(userId, after.lastUsageId)).data;
+      let oldEntry = previousUsage(userId, after.lastUsageId);
+      return entry.inventoryId == inventoryId && entry.version == oldEntry.version + 1
+        && after.usageRevision == before.get('usageRevision', 0) + 1
+        && after.linkedUsageCount == before.get('linkedUsageCount', 0) + linkDelta(oldEntry, entry)
+        && after.milliSkeins == before.milliSkeins + (entry.deductsStock ? oldEntry.milliSkeins - entry.milliSkeins : 0)
+        && after.diff(before).affectedKeys().hasOnly(['milliSkeins', 'quantity', 'linkedUsageCount', 'usageRevision', 'lastUsageId', 'updatedAt']);
+    }
+    function linkedUsageWrite(userId, id) {
+      let entry = request.resource.data;
+      let old = previousUsage(userId, id);
+      let stock = get(stockPath(userId, entry.inventoryId)).data;
+      let nextStock = getAfter(stockPath(userId, entry.inventoryId)).data;
+      let project = get(projectPath(userId, entry.projectId)).data;
+      let nextProject = getAfter(projectPath(userId, entry.projectId)).data;
+      return entry.keys().hasOnly(['projectId', 'inventoryId', 'name', 'colour', 'material', 'conversion', 'milliSkeins', 'deductsStock', 'version', 'operationId', 'createdAt', 'updatedAt'])
+        && entry.projectId is string && entry.inventoryId is string
+        && entry.name is string && entry.name.size() <= 600
+        && entry.colour is string && entry.material is string
+        && validConversion(entry.conversion) && validMilli(entry.milliSkeins)
+        && entry.deductsStock is bool && entry.version == old.version + 1
+        && entry.operationId is string && entry.operationId.size() > 0 && entry.operationId.size() <= 600
+        && entry.createdAt is timestamp && entry.updatedAt == request.time
+        && project.status in ['active', 'completed']
+        && (!project.get('deleting', false) || entry.milliSkeins == 0)
+        && nextStock.lastUsageId == id && nextProject.lastUsageId == id
+        && nextStock.usageRevision == stock.get('usageRevision', 0) + 1
+        && nextProject.usageRevision == project.get('usageRevision', 0) + 1
+        && nextStock.linkedUsageCount == stock.get('linkedUsageCount', 0) + linkDelta(old, entry)
+        && nextProject.usageCount == project.get('usageCount', 0) + linkDelta(old, entry)
+        && nextStock.milliSkeins == stock.milliSkeins + (entry.deductsStock ? old.milliSkeins - entry.milliSkeins : 0);
+    }
+
+    match /users/{userId}/materialUsage/{usageId} {
+      allow read: if isVerifiedOwner(userId);
+      allow create: if isVerifiedOwner(userId) && linkedUsageWrite(userId, usageId)
+        && request.resource.data.milliSkeins > 0
+        && request.resource.data.deductsStock == (get(projectPath(userId, request.resource.data.projectId)).data.status == 'active' || get(projectPath(userId, request.resource.data.projectId)).data.get('materialsMode', 'historical') == 'consumed')
+        && request.resource.data.conversion == get(stockPath(userId, request.resource.data.inventoryId)).data.conversion
+        && request.resource.data.createdAt == request.time;
+      allow update: if isVerifiedOwner(userId) && linkedUsageWrite(userId, usageId)
+        && resource.data.milliSkeins > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['milliSkeins', 'version', 'operationId', 'updatedAt']);
+      allow delete: if isVerifiedOwner(userId) && resource.data.milliSkeins == 0
+        && get(projectPath(userId, resource.data.projectId)).data.get('deleting', false);
+    }
+
     function validProject(data) {
       return data.keys().hasOnly([
           'name', 'status', 'description', 'patternUrl', 'materialsRequired', 'latestUpdate',
           'hookSize', 'yarn', 'amountUsed', 'coverPhotoId', 'completedAt',
-          'sourceCompletedProjectId', 'displayOrder', 'createdAt', 'updatedAt', 'schemaVersion'
+          'sourceCompletedProjectId', 'displayOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+          'latestUpdateAt', 'materialsMode', 'deleting', 'usageCount', 'usageRevision', 'lastUsageId', 'photoRevision'
         ])
         && data.name is string
         && data.name.size() > 0
@@ -35,17 +111,34 @@ service cloud.firestore {
         && (!('completedAt' in data) || data.completedAt is timestamp)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
+        && (!('latestUpdateAt' in data) || data.latestUpdateAt is timestamp)
+        && (!('materialsMode' in data) || data.materialsMode in ['consumed', 'historical'])
+        && (!('deleting' in data) || data.deleting is bool)
+        && data.get('usageCount', 0) is int && data.get('usageCount', 0) >= 0
+        && data.get('usageRevision', 0) is int && data.get('usageRevision', 0) >= 0
+        && optionalText(data, 'lastUsageId', 200)
+        && data.get('photoRevision', 0) is int && data.get('photoRevision', 0) >= 0
         && data.schemaVersion == 1;
     }
 
     match /users/{userId}/projects/{projectId} {
       allow read: if isVerifiedOwner(userId);
-      allow create, update: if isVerifiedOwner(userId) && validProject(request.resource.data);
-      allow delete: if isVerifiedOwner(userId);
+      allow create: if isVerifiedOwner(userId) && validProject(request.resource.data)
+        && request.resource.data.get('usageCount', 0) == 0 && request.resource.data.get('usageRevision', 0) == 0
+        && !('lastUsageId' in request.resource.data) && !request.resource.data.get('deleting', false)
+        && request.resource.data.get('materialsMode', request.resource.data.status == 'completed' ? 'historical' : 'consumed') == (request.resource.data.status == 'completed' ? 'historical' : 'consumed');
+      allow update: if isVerifiedOwner(userId) && validProject(request.resource.data)
+        && (request.resource.data.status == resource.data.status || (resource.data.status == 'planned' && request.resource.data.status == 'active') || (resource.data.status == 'active' && request.resource.data.status == 'completed'))
+        && (!resource.data.get('deleting', false) || request.resource.data.deleting == true)
+        && request.resource.data.get('materialsMode', resource.data.get('materialsMode', resource.data.status == 'completed' ? 'historical' : 'consumed')) == resource.data.get('materialsMode', resource.data.status == 'completed' ? 'historical' : 'consumed')
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['usageCount', 'usageRevision', 'lastUsageId']) || validProjectAccounting(userId, projectId));
+      allow delete: if isVerifiedOwner(userId) && resource.data.get('usageCount', 0) == 0;
 
       match /sections/{sectionId} {
         allow read, delete: if isVerifiedOwner(userId);
         allow create, update: if isVerifiedOwner(userId)
+          && !get(projectPath(userId, projectId)).data.get('deleting', false)
+          && get(projectPath(userId, projectId)).data.status != 'completed'
           && request.resource.data.keys().hasOnly(['name', 'parentSectionId', 'current', 'target', 'createdAt', 'updatedAt'])
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
@@ -60,6 +153,8 @@ service cloud.firestore {
         match /counters/{counterId} {
           allow read, delete: if isVerifiedOwner(userId);
           allow create, update: if isVerifiedOwner(userId)
+            && !get(projectPath(userId, projectId)).data.get('deleting', false)
+            && get(projectPath(userId, projectId)).data.status != 'completed'
             && request.resource.data.keys().hasOnly(['name', 'current', 'target', 'completed', 'stitchType', 'customStitchName', 'customStitchInstructions', 'stitchesPerRow', 'createdAt', 'updatedAt'])
             && request.resource.data.name is string
             && request.resource.data.name.size() > 0
@@ -83,7 +178,32 @@ service cloud.firestore {
       match /photos/{photoId} {
         allow read, delete: if isVerifiedOwner(userId);
         allow create, update: if isVerifiedOwner(userId)
-          && get(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)).data.status == 'completed'
+          && get(projectPath(userId, projectId)).data.status == 'completed'
+          && !get(projectPath(userId, projectId)).data.get('deleting', false)
+          && request.resource.data.keys().hasOnly(['cloudinaryPublicId', 'secureUrl', 'assetVersion', 'format', 'contentType', 'byteSize', 'width', 'height', 'createdAt'])
+          && request.resource.data.cloudinaryPublicId is string
+          && request.resource.data.cloudinaryPublicId.size() > 0
+          && request.resource.data.secureUrl is string
+          && request.resource.data.secureUrl.matches('https://.*')
+          && request.resource.data.assetVersion is int
+          && request.resource.data.format in ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
+          && request.resource.data.contentType is string
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize > 0
+          && request.resource.data.byteSize <= 1048576
+          && request.resource.data.width is int
+          && request.resource.data.width > 0
+          && request.resource.data.height is int
+          && request.resource.data.height > 0
+          && request.resource.data.createdAt is timestamp;
+      }
+
+      match /referencePhotos/{photoId} {
+        allow read, delete: if isVerifiedOwner(userId);
+        allow create: if isVerifiedOwner(userId)
+          && photoId == 'cover'
+          && exists(projectPath(userId, projectId))
+          && !get(projectPath(userId, projectId)).data.get('deleting', false)
           && request.resource.data.keys().hasOnly(['cloudinaryPublicId', 'secureUrl', 'assetVersion', 'format', 'contentType', 'byteSize', 'width', 'height', 'createdAt'])
           && request.resource.data.cloudinaryPublicId is string
           && request.resource.data.cloudinaryPublicId.size() > 0
@@ -105,6 +225,8 @@ service cloud.firestore {
       match /yarns/{yarnId} {
         allow read, delete: if isVerifiedOwner(userId);
         allow create, update: if isVerifiedOwner(userId)
+          && !get(projectPath(userId, projectId)).data.get('deleting', false)
+          && get(projectPath(userId, projectId)).data.status != 'completed'
           && request.resource.data.keys().hasOnly(['name', 'material', 'category', 'colour', 'quantity', 'unit', 'customUnit', 'createdAt', 'updatedAt'])
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
@@ -122,25 +244,29 @@ service cloud.firestore {
     }
 
     match /users/{userId}/inventory/{inventoryId} {
-      allow read, delete: if isVerifiedOwner(userId);
-      allow create, update: if isVerifiedOwner(userId)
-        && request.resource.data.keys().hasOnly(['name', 'material', 'category', 'colour', 'recommendedHookSize', 'quantity', 'unit', 'customUnit', 'createdAt', 'updatedAt'])
-        && optionalText(request.resource.data, 'name', 200)
-        && optionalText(request.resource.data, 'recommendedHookSize', 100)
-        && request.resource.data.material is string
-        && request.resource.data.material.size() > 0
-        && request.resource.data.material.size() <= 200
-        && request.resource.data.category is string
-        && request.resource.data.category.size() <= 200
-        && request.resource.data.colour is string
-        && request.resource.data.colour.size() <= 200
-        && request.resource.data.quantity is number
-        && request.resource.data.quantity > 0
-        && request.resource.data.unit in ['skeins', 'grams', 'yards', 'metres', 'custom']
-        && (!('customUnit' in request.resource.data) || (request.resource.data.customUnit is string && request.resource.data.customUnit.size() > 0 && request.resource.data.customUnit.size() <= 100))
-        && (request.resource.data.unit != 'custom' || ('customUnit' in request.resource.data))
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp;
+      function validStock(data) {
+        return data.keys().hasOnly(['name', 'material', 'category', 'colour', 'recommendedHookSize', 'quantity', 'unit', 'createdAt', 'updatedAt', 'milliSkeins', 'conversion', 'linkedUsageCount', 'usageRevision', 'lastUsageId'])
+          && optionalText(data, 'name', 200) && optionalText(data, 'recommendedHookSize', 100)
+          && data.material is string && data.material.size() > 0 && data.material.size() <= 200
+          && data.category is string && data.category.size() <= 200
+          && data.colour is string && data.colour.size() <= 200
+          && validMilli(data.milliSkeins) && data.quantity == data.milliSkeins / 1000.0
+          && data.unit == 'skeins' && validConversion(data.conversion)
+          && data.linkedUsageCount is int && data.linkedUsageCount >= 0
+          && data.usageRevision is int && data.usageRevision >= 0
+          && data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+      allow read: if isVerifiedOwner(userId);
+      allow create: if isVerifiedOwner(userId) && validStock(request.resource.data)
+        && request.resource.data.linkedUsageCount == 0 && request.resource.data.usageRevision == 0
+        && !('lastUsageId' in request.resource.data);
+      allow update: if isVerifiedOwner(userId) && validStock(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && ((request.resource.data.linkedUsageCount == resource.data.get('linkedUsageCount', 0)
+          && request.resource.data.usageRevision == resource.data.get('usageRevision', 0)
+          && request.resource.data.get('lastUsageId', '') == resource.data.get('lastUsageId', ''))
+          || validStockAccounting(userId, inventoryId));
+      allow delete: if isVerifiedOwner(userId) && resource.data.get('linkedUsageCount', 0) == 0;
     }
 
     match /{document=**} {
