@@ -160,7 +160,7 @@ Removed the WIP page-turn and spiral-ring animations at the owner's request. Pag
 
 Expanded the approved On the Hook layout to Someday, Made and Stash. All four now use components/journal/journal.tsx; the WIP-only component was consolidated. Each index paginates to available height, has its add action inside the book, and supports swipes and keyboard arrows without flip animations or bottom ornaments. Project books use pastel-green paper; stash yarn pages retain inventory colours. Long project details and editing forms retain their needed scrolling. Photo galleries opt out of page swipes and retain native horizontal scrolling. No data model, security rules, dependencies, billing or services changed.
 
-## Reference image lifecycle revision — 2026-09-29 (local, not deployed)
+## Reference image lifecycle revision — 2026-09-29 (deployed)
 
 This supersedes the earlier reference-retention decisions. Reference images are Someday-only. Starting requires connectivity and removes the Cloudinary asset through the authenticated API, then its metadata, before changing status. Cleanup failure leaves the project planned for retry. Rules reject starting with a remaining reference and reject new references after Start, including concurrent uploads. A successfully removed reference stays removed if the subsequent status update fails; Start can be retried.
 

@@ -30,3 +30,8 @@ The owner confirmed Workers Free in the dashboard. V2 rules and Worker were depl
 ## Photo API configuration completed
 
 The owner explicitly approved transferring the existing five Firebase/Cloudinary configuration values to the Hooked Worker as encrypted secrets. All five uploads succeeded. Live checks returned HTTP 401 for both missing and invalid authentication, replacing the earlier missing-configuration 503; the home page returned HTTP 200. No user photos were accessed or deleted during these checks. Actual authenticated photo deletion remains a user acceptance check. No billing plan was changed. This resolves the credential-setup blocker recorded above.
+
+
+## Someday-only reference image release — 2026-09-29
+
+Published matching Firestore rules and Worker version `9c37e63b-638d-45ee-bf34-b6bbab63776e` after local application, emulator, browser, type/lint, build, and deployment dry-run checks passed. The change reuses existing Firebase and Cloudinary services with no added resource bindings, services, paid add-ons, or billing-plan changes. Existing Worker variables and secrets were preserved. Automated live verification performed page reads, compared a public JavaScript asset, and confirmed the unauthenticated deletion guard; it did not mutate user data.

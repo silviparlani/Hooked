@@ -114,6 +114,9 @@ Expanded the approved On the Hook layout to Someday, Made and Stash. All four no
 
 Shared book release deployed: 12df217e-0387-47d7-8315-1f3bcc373b59. Verification passed: 79 application tests, 18 desktop/mobile browser checks, TypeScript, lint and production build. Live section HTTP smoke checks completed.
 
-## Someday-only reference images — 2026-09-29 (local, not deployed)
+## Someday-only reference images — 2026-09-29 (deployed)
 
 Reference controls and uploads are restricted to planned projects. Start deletes the reference asset and metadata before transitioning; failures or concurrent reference uploads block the transition. WIP has no photos, and Made keeps its five-photo gallery. No bulk cleanup or migration is performed. Editor visibility and Firestore lifecycle/rules regression tests cover the revised policy. Mac verification passed with a temporary Java 21 runtime: 82 application tests, 33 Firebase emulator tests (including cleanup failure/retry and atomic upload/start rejection), 18 journal browser tests, 2 authentication browser tests, TypeScript, lint, production build, and Wrangler deployment dry-run. Chromium was installed for browser verification.
+
+
+Release verified: Firestore rules deployed to `hooked-crochet-tracker`, followed by Worker version `9c37e63b-638d-45ee-bf34-b6bbab63776e` from tested code commit `1282689`. Live `/`, `/inspiration`, `/wips`, `/made`, and `/stash` returned HTTP 200. The hosted editor asset exactly matched the tested local build; unauthenticated photo deletion returned HTTP 401. No live project/photo data was changed by verification, and no service or billing plan was added or upgraded.
