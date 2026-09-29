@@ -128,6 +128,7 @@ service cloud.firestore {
         && !('lastUsageId' in request.resource.data) && !request.resource.data.get('deleting', false)
         && request.resource.data.get('materialsMode', request.resource.data.status == 'completed' ? 'historical' : 'consumed') == (request.resource.data.status == 'completed' ? 'historical' : 'consumed');
       allow update: if isVerifiedOwner(userId) && validProject(request.resource.data)
+        && (!(resource.data.status == 'planned' && request.resource.data.status != 'planned') || !existsAfter(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)/referencePhotos/cover))
         && (request.resource.data.status == resource.data.status || (resource.data.status == 'planned' && request.resource.data.status == 'active') || (resource.data.status == 'active' && request.resource.data.status == 'completed'))
         && (!resource.data.get('deleting', false) || request.resource.data.deleting == true)
         && request.resource.data.get('materialsMode', resource.data.get('materialsMode', resource.data.status == 'completed' ? 'historical' : 'consumed')) == resource.data.get('materialsMode', resource.data.status == 'completed' ? 'historical' : 'consumed')
@@ -202,6 +203,7 @@ service cloud.firestore {
         allow read, delete: if isVerifiedOwner(userId);
         allow create: if isVerifiedOwner(userId)
           && photoId == 'cover'
+          && getAfter(projectPath(userId, projectId)).data.status == 'planned'
           && exists(projectPath(userId, projectId))
           && !get(projectPath(userId, projectId)).data.get('deleting', false)
           && request.resource.data.keys().hasOnly(['cloudinaryPublicId', 'secureUrl', 'assetVersion', 'format', 'contentType', 'byteSize', 'width', 'height', 'createdAt'])

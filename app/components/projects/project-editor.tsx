@@ -507,7 +507,12 @@ export function ProjectEditor({
           </div>
         </details>
       )}
-      {project && <ProjectPhotos userId={userId} projectId={project.id} reference />}
+      {project && status === 'planned' && (
+        <>
+          <ProjectPhotos userId={userId} projectId={project.id} reference />
+          <p>Starting this project permanently removes its reference image.</p>
+        </>
+      )}
       {status === 'completed' && project && (
         <MaterialsUsed
           userId={userId}

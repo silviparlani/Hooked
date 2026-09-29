@@ -240,6 +240,7 @@ function ProjectJournalPage({ userId, project }: { userId: string; project: Proj
                 className="primary-button"
                 type="button"
                 disabled={busy || project.deleting}
+                title="Starting this project permanently removes its reference image"
                 onClick={() => action('start')}
               >
                 Start project

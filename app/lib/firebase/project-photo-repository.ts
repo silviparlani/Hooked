@@ -93,6 +93,8 @@ export async function addProjectPhoto(
       throw new Error('This project is unavailable.');
     if ((current.data().photoRevision ?? 0) !== (before.data()?.photoRevision ?? 0))
       throw new Error('The photos changed on another device. Please try again.');
+    if (reference && current.data().status !== 'planned')
+      throw new Error('Reference images are only allowed in Someday.');
     if (!reference && current.data().status !== 'completed')
       throw new Error('Complete this project before adding finished photos.');
     tx.set(target, { ...stored, createdAt: serverTimestamp() });
@@ -132,4 +134,9 @@ export async function removeAllProjectPhotos(userId: string, projectId: string) 
     for (const photo of photos.docs)
       await removeProjectPhoto(userId, projectId, photo.id, reference);
   }
+}
+
+export async function removeProjectReferencePhotos(userId: string, projectId: string) {
+  const photos = await getDocsFromServer(photosRef(userId, projectId, true));
+  for (const photo of photos.docs) await removeProjectPhoto(userId, projectId, photo.id, true);
 }

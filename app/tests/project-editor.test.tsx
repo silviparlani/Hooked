@@ -26,7 +26,9 @@ vi.mock('@/components/projects/work-sections', () => ({
   WorkSections: () => <div>Work sections</div>,
 }));
 vi.mock('@/components/projects/project-photos', () => ({
-  ProjectPhotos: () => <div>Project photos</div>,
+  ProjectPhotos: ({ reference }: { reference?: boolean }) => (
+    <div>{reference ? 'Reference image' : 'Completed photos'}</div>
+  ),
 }));
 vi.mock('@/lib/firebase/project-repository', () => ({
   completeProject: vi.fn(),
@@ -52,6 +54,15 @@ const project: Project = {
 
 describe('ProjectEditor milestone 2 controls', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(['planned', 'active', 'completed'] as const)(
+    'limits photo controls for %s projects',
+    (status) => {
+      render(<ProjectEditor userId="silvi" project={{ ...project, status }} />);
+      expect(Boolean(screen.queryByText('Reference image'))).toBe(status === 'planned');
+      expect(Boolean(screen.queryByText('Completed photos'))).toBe(status === 'completed');
+    },
+  );
 
   it('shows saved pattern sources as links until editing begins', () => {
     render(<ProjectEditor userId="silvi" project={project} />);

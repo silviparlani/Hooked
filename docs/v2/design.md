@@ -15,7 +15,7 @@ The user is product manager and code reviewer. This document records the confirm
 - Made: title, description, completion date, first remaining uploaded photo as cover, and other photos in a horizontal swipe area. Keep the five-photo limit. No cover override.
 - On The Hook: title, description, latest progress note and its date. Open the existing project screen to use working sections.
 - Description and progress-note editing must resize to accommodate long text; displayed text must wrap and remain reachable without escaping its container. The user reports overflow and this is part of v2 scope.
-- Someday: title, description, pattern URL, one manually uploaded reference image, and existing actions such as Start and Delete. Retain the reference image when starting the project, separately from Made photos. It must not become the Made cover or count toward the five completed-photo limit. No YouTube thumbnail lookup or integration.
+- Someday: title, description, pattern URL, one manually uploaded reference image, and existing actions such as Start and Delete. Delete the reference image and its Cloudinary asset before starting the project. WIPs have no photo controls. Made permits up to five completed photos and no reference image. No YouTube thumbnail lookup or integration.
 - Stash: one yarn per page with name, details, recommended hook size, available skeins, required label conversion, and the existing yarn-derived background colour.
 - Existing functionality remains except for removed reordering, the new media support, and the explicit materials/accounting changes.
 
@@ -94,7 +94,7 @@ No product questions remain from the requirements review. The user then requeste
 
 - One animated journal page at a time, usable on iPhone 16 Pro; all four opening indexes support direct jumps and reorder controls are absent. Someday/On The Hook sort by most recent update, Made by most recent completion, and Stash retains its existing order.
 - Long descriptions/notes resize and wrap without overflow; WIP summary shows progress text and its meaningful date.
-- Someday permits one manual reference image, retains it separately through Start/completion, and makes no thumbnail requests. Made uses the first remaining completed photo and respects its separate five-photo limit.
+- Someday permits one manual reference image, removes it before Start, and makes no thumbnail requests. Made uses the first remaining completed photo and respects its separate five-photo limit.
 - Incremental fractional usage deducts once, rejects insufficient stock, and returns stock on approved corrections/deletion.
 - Zero-stock pages persist and linked yarn deletion is blocked.
 - Required conversion data is retained; Made history is stable after stash edits.
@@ -114,7 +114,7 @@ No package dependencies were added. Existing React, Firestore, and Cloudinary fa
 | users/{uid}/inventory/{id} | milliSkeins integer balance; quantity remains a compatible skein display value; required conversion {value, unit}; linkedUsageCount; usageRevision; lastUsageId |
 | users/{uid}/materialUsage/{id} | One added amount: projectId, inventoryId, name/material/colour snapshots, conversion snapshot, milliSkeins, deductsStock, version, operationId, createdAt, updatedAt |
 | users/{uid}/projects/{id} | materialsMode consumed/historical; usageCount; usageRevision; lastUsageId; deleting lock; latestUpdateAt; photoRevision. Existing schemaVersion remains 1 with additive optional fields. |
-| projects/{id}/referencePhotos/cover | At most one reference image, retained across Start and completion; separate from the existing photos collection. |
+| projects/{id}/referencePhotos/cover | At most one reference image, only while planned; removed before Start. |
 
 Material transactions read the project, stash yarn, and usage entry before writing all three together. Rules use getAfter to validate the matched quantity delta, reference counts, and revisions. The normal stash-edit path may change its balance intentionally but cannot reset usage reference counts. Stale stash forms are rejected rather than overwriting later consumption. Conversion snapshots and stock-impact flags cannot be rewritten by a correction.
 
@@ -159,3 +159,9 @@ Removed the WIP page-turn and spiral-ring animations at the owner's request. Pag
 ## Shared approved book layout
 
 Expanded the approved On the Hook layout to Someday, Made and Stash. All four now use components/journal/journal.tsx; the WIP-only component was consolidated. Each index paginates to available height, has its add action inside the book, and supports swipes and keyboard arrows without flip animations or bottom ornaments. Project books use pastel-green paper; stash yarn pages retain inventory colours. Long project details and editing forms retain their needed scrolling. Photo galleries opt out of page swipes and retain native horizontal scrolling. No data model, security rules, dependencies, billing or services changed.
+
+## Reference image lifecycle revision — 2026-09-29 (local, not deployed)
+
+This supersedes the earlier reference-retention decisions. Reference images are Someday-only. Starting requires connectivity and removes the Cloudinary asset through the authenticated API, then its metadata, before changing status. Cleanup failure leaves the project planned for retry. Rules reject starting with a remaining reference and reject new references after Start, including concurrent uploads. A successfully removed reference stays removed if the subsequent status update fails; Start can be retried.
+
+WIP and Made editors hide legacy reference images. No automatic migration or bulk deletion of previously retained references is performed; normal project deletion still cleans them up. Publish the matching rules and application together. No service or billing change is required.

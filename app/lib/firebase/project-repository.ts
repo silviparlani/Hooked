@@ -4,6 +4,7 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   getDocsFromServer,
   onSnapshot,
@@ -37,7 +38,7 @@ import {
 } from '@/lib/domain/project-parts';
 import { refundProjectMaterials, requireConnection } from './materials-repository';
 import { getFirebaseClient } from './client';
-import { removeAllProjectPhotos } from './project-photo-repository';
+import { removeAllProjectPhotos, removeProjectReferencePhotos } from './project-photo-repository';
 import { clearSyncSource, reportSyncSource } from './sync-state';
 
 function projectsPath(userId: string) {
@@ -179,6 +180,16 @@ export async function reorderProjects(userId: string, projectIds: string[]) {
 }
 
 export async function startProject(userId: string, projectId: string, input: EditableProject) {
+  requireConnection();
+  const name = validateProjectName(input.name);
+  if (!name.valid) throw new Error(name.message);
+  const parent = doc(projectsPath(userId), projectId);
+  const existing = await getDocFromServer(parent);
+  if (!existing.exists() || existing.data().status !== 'planned' || existing.data().deleting)
+    throw new Error('Only a Someday project can be started.');
+  // Delete the cloud asset before its metadata, and leave the project planned on failure.
+  // The rules reject the transition if a concurrent upload adds another reference.
+  await removeProjectReferencePhotos(userId, projectId);
   await updateProject(userId, projectId, { ...input, status: 'active' });
 }
 
@@ -313,4 +324,3 @@ export async function deleteProject(userId: string, projectId: string) {
   finalBatch.delete(project);
   await finalBatch.commit();
 }
-
